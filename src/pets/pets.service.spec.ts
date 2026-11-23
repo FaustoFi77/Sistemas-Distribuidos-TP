@@ -39,6 +39,31 @@ describe('PetsService', () => {
     service = moduleRef.get(PetsService);
   });
 
+  it('crea una mascota normalizando espacios y con deviceId null', async () => {
+    const created = await service.create('user-1', {
+      name: '  Luna  ',
+      species: 'dog',
+      breed: '  Mestiza ',
+    });
+
+    expect(petsRepo.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        userId: 'user-1',
+        name: 'Luna',
+        species: 'dog',
+        breed: 'Mestiza',
+        deviceId: null,
+      }),
+    );
+    expect(created).toMatchObject({
+      id: 'pet-1',
+      name: 'Luna',
+      species: 'dog',
+      breed: 'Mestiza',
+      deviceId: null,
+    });
+  });
+
   it('lista mascotas paginadas solo del usuario autenticado', async () => {
     petsRepo.findAndCount.mockResolvedValue([
       [

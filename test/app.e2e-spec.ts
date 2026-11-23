@@ -243,7 +243,20 @@ describe('API REST Interoperabilidad + Variante Grupo 3 (E2E)', () => {
       .expect(200);
     expect(embedRes.body.token).toBe('mock-embed-token');
 
-    // 7. Crear zona circular con active=false y verificar que PATCH parcial NO pisa active ni coordenadas
+    // 7. Rechaza radio negativo con 400 VALIDATION_ERROR
+    const badZoneRes = await request(app.getHttpServer())
+      .post(`/api/v1/pets/${petId}/zones`)
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        name: 'Zona inválida',
+        centerLat: -34.603722,
+        centerLon: -58.381592,
+        radiusMeters: -50,
+      })
+      .expect(400);
+    expect(badZoneRes.body.code).toBe('VALIDATION_ERROR');
+
+    // 8. Crear zona circular con active=false y verificar que PATCH parcial NO pisa active ni coordenadas
     const zoneRes = await request(app.getHttpServer())
       .post(`/api/v1/pets/${petId}/zones`)
       .set('Authorization', `Bearer ${token}`)

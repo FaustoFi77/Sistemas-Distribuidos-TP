@@ -95,6 +95,20 @@ describe('ZonesService (unitarios con dobles)', () => {
     expect(updated.active).toBe(false);
   });
 
+  it('elimina una zona existente del usuario', async () => {
+    const existing = {
+      id: 'zone-1',
+      userId: 'user-1',
+      petId: 'pet-1',
+      name: 'Casa',
+    };
+    zonesRepo.findOne.mockResolvedValue(existing);
+
+    await service.remove('user-1', 'zone-1');
+
+    expect(zonesRepo.remove).toHaveBeenCalledWith(existing);
+  });
+
   it('devuelve 404 ZONE_NOT_FOUND si la zona no existe o pertenece a otro usuario', async () => {
     zonesRepo.findOne.mockResolvedValue(null);
 

@@ -1,0 +1,37 @@
+export function validateEnv(
+  config: Record<string, unknown>,
+): Record<string, unknown> {
+  const errors: string[] = [];
+
+  const jwtSecret =
+    typeof config.JWT_SECRET === 'string' ? config.JWT_SECRET.trim() : '';
+  if (!jwtSecret) {
+    errors.push('JWT_SECRET es obligatoria y no puede estar vacía.');
+  } else if (jwtSecret.length < 16) {
+    errors.push('JWT_SECRET debe tener al menos 16 caracteres.');
+  }
+
+  const clientId =
+    typeof config.OVENBIRD_CLIENT_ID === 'string'
+      ? config.OVENBIRD_CLIENT_ID.trim()
+      : '';
+  if (!clientId) {
+    errors.push('OVENBIRD_CLIENT_ID es obligatoria y no puede estar vacía.');
+  }
+
+  const clientSecret =
+    typeof config.OVENBIRD_CLIENT_SECRET === 'string'
+      ? config.OVENBIRD_CLIENT_SECRET.trim()
+      : '';
+  if (!clientSecret) {
+    errors.push('OVENBIRD_CLIENT_SECRET es obligatoria y no puede estar vacía.');
+  }
+
+  if (errors.length > 0) {
+    throw new Error(
+      `Error en variables de entorno requeridas:\n- ${errors.join('\n- ')}`,
+    );
+  }
+
+  return config;
+}

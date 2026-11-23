@@ -81,6 +81,11 @@ export class AlertsController {
   @ApiOperation({
     summary: 'Stream SSE en tiempo real de alertas y actualizaciones de monitoreo del usuario',
   })
+  @ApiResponse({
+    status: 200,
+    description: 'Conexión SSE abierta emitiendo eventos alert.created, alert.resolved y monitoring.updated',
+  })
+  @ApiResponse({ status: 401, description: 'No autenticado' })
   streamAlerts(@CurrentUser() user: UserResponse): Observable<MessageEvent> {
     return this.monitoringService.streamEventsForUser(user.id);
   }

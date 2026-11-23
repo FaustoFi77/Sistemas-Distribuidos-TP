@@ -11,6 +11,7 @@ import { ProblemExceptionFilter } from '../src/common/filters/problem-exception.
 import { createGlobalValidationPipe } from '../src/common/pipes/validation.pipe';
 import { validateEnv } from '../src/config/env.validation';
 import { DevicesModule } from '../src/devices/devices.module';
+import { HealthModule } from '../src/health/health.module';
 import { OvenbirdIntegrationModule } from '../src/ovenbird/ovenbird.integration.module';
 import { PetsModule } from '../src/pets/pets.module';
 import { ZonesModule } from '../src/zones/zones.module';
@@ -85,6 +86,7 @@ describe('API REST Interoperabilidad + Variante Grupo 3 (E2E)', () => {
           synchronize: true,
         }),
         OvenbirdIntegrationModule,
+        HealthModule,
         AuthModule,
         PetsModule,
         DevicesModule,
@@ -125,6 +127,15 @@ describe('API REST Interoperabilidad + Variante Grupo 3 (E2E)', () => {
         process.env[k] = v;
       }
     }
+  });
+
+  it('GET /api/v1/health responde 200 con status ok', async () => {
+    const res = await request(app.getHttpServer())
+      .get('/api/v1/health')
+      .expect(200);
+
+    expect(res.body.status).toBe('ok');
+    expect(typeof res.body.timestamp).toBe('string');
   });
 
   it('GET /api/v1/capabilities anuncia versión 1 y variante link-loss-zones', async () => {

@@ -79,7 +79,6 @@ npm run start:prod
 
 ### 4. Ejecutar pruebas automatizadas (Jest)
 ```bash
-<<<<<<< HEAD
 # Pruebas unitarias puras (todas las dependencias reemplazadas por dobles/mocks)
 npm test
 
@@ -88,11 +87,6 @@ npm run test:e2e
 ```
 - `npm test` ejecuta las pruebas unitarias de `AuthService`, `PetsService`, `DevicesService`, `ZonesService`, `MonitoringService`, `ProblemExceptionFilter` y `validateEnv` (con dobles, sin tocar disco ni base real).
 - `npm run test:e2e` levanta la app HTTP en memoria para validar rutas, `PATCH` parcial sin pisar campos omitidos, `404` RFC 9457, `Swagger /api/docs-json` y flujo completo.
-=======
-npm test
-```
-Incluye pruebas unitarias de `AuthService`, `PetsService`, `DevicesService` (con `@ovenbird/node` simulado), `MonitoringService` (Haversine, lecturas consecutivas, histéresis, pérdida de enlace y ventana de gracia) y `ProblemExceptionFilter`, más una suite E2E HTTP contra SQLite en memoria.
->>>>>>> e1320ea31da6df2bf4fa7967b6c9490a272bd2a9
 
 ---
 
@@ -115,6 +109,7 @@ Incluye pruebas unitarias de `AuthService`, `PetsService`, `DevicesService` (con
 | `DELETE` | `/api/v1/pets/:petId/device` | Bearer | Desvincular collar |
 | `POST` | `/api/v1/embed-token` | Bearer | Token corto para `@ovenbird/react` (`200`) |
 | `GET` | `/api/v1/capabilities` | Pública | `{ apiVersion: "1", variants: ["link-loss-zones"] }` |
+| `GET` | `/api/v1/health` | Pública | Health check del servidor (`{ status: "ok", timestamp }`) |
 
 ### Variante Grupo 3 (`x-variant: link-loss-zones`)
 | Método | Ruta | Auth | Descripción |
@@ -135,11 +130,7 @@ Incluye pruebas unitarias de `AuthService`, `PetsService`, `DevicesService` (con
 
 ## Decisiones de diseño y Requisitos No Funcionales (Sección 4 del TP)
 
-<<<<<<< HEAD
 - **Seguridad y aislamiento:** contraseñas hasheadas con `bcryptjs` (salt 10), JWT validado en servidor, validación *fail-fast* de variables obligatorias al iniciar (`JWT_SECRET`, `OVENBIRD_CLIENT_ID`, `OVENBIRD_CLIENT_SECRET`, sin valores de respaldo hardcodeados), IDs UUID no predecibles, `404` ante recursos ajenos para evitar enumeración, `OVENBIRD_CLIENT_SECRET` exclusivamente en backend y fuera de Git (`.env` en `.gitignore`).
-=======
-- **Seguridad y aislamiento:** contraseñas hasheadas con `bcryptjs` (salt 10), JWT validado en servidor, IDs UUID no predecibles, `404` ante recursos ajenos para evitar enumeración, `OVENBIRD_CLIENT_SECRET` exclusivamente en backend y fuera de Git (`.env` en `.gitignore`).
->>>>>>> e1320ea31da6df2bf4fa7967b6c9490a272bd2a9
 - **Confiabilidad de los datos y anti-falsas alarmas:**
   - Se descartan lecturas GPS con `fix === "none"` o coordenadas fuera de rango.
   - **Zonas múltiples:** una mascota se considera segura si está dentro de **al menos una** de sus zonas activas (ej. "Casa" o "Plaza").

@@ -98,10 +98,14 @@ export class DevicesController {
     summary: 'Emitir token de corta duración para el mapa embebido (@ovenbird/react)',
   })
   @ApiResponse({ status: 200, description: 'Token de embebido emitido' })
+<<<<<<< HEAD
   @ApiResponse({ status: 400, description: 'Datos inválidos (RFC 9457)' })
   @ApiResponse({ status: 401, description: 'No autenticado' })
   @ApiResponse({ status: 403, description: 'Dispositivo no pertenece al usuario' })
   @ApiResponse({ status: 404, description: 'Mascota indicada en petId no encontrada' })
+=======
+  @ApiResponse({ status: 403, description: 'Dispositivo no pertenece al usuario' })
+>>>>>>> e1320ea31da6df2bf4fa7967b6c9490a272bd2a9
   @ApiResponse({ status: 409, description: 'El usuario no tiene dispositivos vinculados' })
   createEmbedToken(
     @CurrentUser() user: UserResponse,

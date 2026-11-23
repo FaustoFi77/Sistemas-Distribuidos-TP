@@ -5,7 +5,10 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { AuthModule } from './auth/auth.module';
 import { CapabilitiesModule } from './capabilities/capabilities.module';
+<<<<<<< HEAD
 import { validateEnv } from './config/env.validation';
+=======
+>>>>>>> e1320ea31da6df2bf4fa7967b6c9490a272bd2a9
 import { DevicesModule } from './devices/devices.module';
 import { OvenbirdIntegrationModule } from './ovenbird/ovenbird.integration.module';
 import { PetsModule } from './pets/pets.module';
@@ -15,7 +18,10 @@ import { ZonesModule } from './zones/zones.module';
   imports: [
     ConfigModule.forRoot({
       isGlobal: true,
+<<<<<<< HEAD
       validate: validateEnv,
+=======
+>>>>>>> e1320ea31da6df2bf4fa7967b6c9490a272bd2a9
     }),
     TypeOrmModule.forRootAsync({
       inject: [ConfigService],

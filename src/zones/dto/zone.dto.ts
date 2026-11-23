@@ -1,4 +1,9 @@
+<<<<<<< HEAD
 import { ApiProperty, ApiPropertyOptional, PartialType } from '@nestjs/swagger';
+=======
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { Type } from 'class-transformer';
+>>>>>>> e1320ea31da6df2bf4fa7967b6c9490a272bd2a9
 import {
   IsBoolean,
   IsIn,
@@ -21,12 +26,20 @@ export class CreateZoneDto {
   name: string;
 
   @ApiProperty({ example: -34.603722, minimum: -90, maximum: 90 })
+<<<<<<< HEAD
+=======
+  @Type(() => Number)
+>>>>>>> e1320ea31da6df2bf4fa7967b6c9490a272bd2a9
   @IsNumber()
   @Min(-90)
   @Max(90)
   centerLat: number;
 
   @ApiProperty({ example: -58.381592, minimum: -180, maximum: 180 })
+<<<<<<< HEAD
+=======
+  @Type(() => Number)
+>>>>>>> e1320ea31da6df2bf4fa7967b6c9490a272bd2a9
   @IsNumber()
   @Min(-180)
   @Max(180)
@@ -38,25 +51,69 @@ export class CreateZoneDto {
     maximum: 50000,
     description: 'Radio de la zona circular en metros',
   })
+<<<<<<< HEAD
+=======
+  @Type(() => Number)
+>>>>>>> e1320ea31da6df2bf4fa7967b6c9490a272bd2a9
   @IsNumber()
   @Min(10)
   @Max(50000)
   radiusMeters: number;
 
+<<<<<<< HEAD
   @ApiPropertyOptional({
     default: true,
     description: 'Indica si la zona está activa al crearse (por defecto true)',
   })
+=======
+  @ApiPropertyOptional({ default: true })
+>>>>>>> e1320ea31da6df2bf4fa7967b6c9490a272bd2a9
   @IsOptional()
   @IsBoolean()
   active?: boolean;
 }
 
+<<<<<<< HEAD
 export class UpdateZoneDto extends PartialType(CreateZoneDto) {
   @ApiPropertyOptional({
     example: true,
     description: 'Omitir para mantener el estado actual sin cambios',
   })
+=======
+export class UpdateZoneDto {
+  @ApiPropertyOptional({ example: 'Plaza del barrio' })
+  @IsOptional()
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(100)
+  name?: string;
+
+  @ApiPropertyOptional({ example: -34.603722, minimum: -90, maximum: 90 })
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(-90)
+  @Max(90)
+  centerLat?: number;
+
+  @ApiPropertyOptional({ example: -58.381592, minimum: -180, maximum: 180 })
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(-180)
+  @Max(180)
+  centerLon?: number;
+
+  @ApiPropertyOptional({ example: 150, minimum: 10, maximum: 50000 })
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(10)
+  @Max(50000)
+  radiusMeters?: number;
+
+  @ApiPropertyOptional({ example: true })
+>>>>>>> e1320ea31da6df2bf4fa7967b6c9490a272bd2a9
   @IsOptional()
   @IsBoolean()
   active?: boolean;

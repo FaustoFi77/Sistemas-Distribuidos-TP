@@ -25,6 +25,10 @@ export function createGlobalValidationPipe(): ValidationPipe {
     whitelist: true,
     forbidNonWhitelisted: false,
     transform: true,
+<<<<<<< HEAD
+=======
+    transformOptions: { enableImplicitConversion: true },
+>>>>>>> e1320ea31da6df2bf4fa7967b6c9490a272bd2a9
     exceptionFactory: (validationErrors: ValidationError[]) => {
       const fieldErrors = flattenValidationErrors(validationErrors);
       return new ProblemException({

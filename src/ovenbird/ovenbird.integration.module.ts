@@ -14,8 +14,13 @@ import { OvenbirdModule } from '@ovenbird/node/nest';
             'OVENBIRD_URL',
             'https://iotplatform.ovenbirdconsulting.com.ar',
           ),
+<<<<<<< HEAD
           clientId: config.getOrThrow<string>('OVENBIRD_CLIENT_ID'),
           clientSecret: config.getOrThrow<string>('OVENBIRD_CLIENT_SECRET'),
+=======
+          clientId: config.get<string>('OVENBIRD_CLIENT_ID', ''),
+          clientSecret: config.get<string>('OVENBIRD_CLIENT_SECRET', ''),
+>>>>>>> e1320ea31da6df2bf4fa7967b6c9490a272bd2a9
           logger: {
             warn: (msg: string) => logger.warn(msg),
           },

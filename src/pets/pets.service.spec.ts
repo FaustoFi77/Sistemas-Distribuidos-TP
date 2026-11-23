@@ -86,6 +86,7 @@ describe('PetsService', () => {
     });
   });
 
+<<<<<<< HEAD
   it('actualiza parcialmente una mascota sin pisar los campos omitidos', async () => {
     const pet = {
       id: 'pet-1',
@@ -113,6 +114,8 @@ describe('PetsService', () => {
     expect(updated.deviceId).toBe('dev-99');
   });
 
+=======
+>>>>>>> e1320ea31da6df2bf4fa7967b6c9490a272bd2a9
   it('desvincula el collar antes de eliminar una mascota', async () => {
     const pet = {
       id: 'pet-1',

@@ -2,6 +2,7 @@ import { Test } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { OvenbirdNotFoundError } from '@ovenbird/node';
 import { OvenbirdService } from '@ovenbird/node/nest';
+import { DomainEventsService } from '../common/events/domain-events.service';
 import { Pet } from '../pets/entities/pet.entity';
 import { PetsService } from '../pets/pets.service';
 import { DevicesService } from './devices.service';
@@ -24,10 +25,12 @@ describe('DevicesService (con SDK @ovenbird/node simulado)', () => {
     findOneEntityForUser: jest.Mock;
     toPetResponse: jest.Mock;
   };
+  let domainEventsMock: { emit: jest.Mock };
 
   const now = new Date();
 
   beforeEach(async () => {
+    domainEventsMock = { emit: jest.fn().mockResolvedValue(undefined) };
     ovenbirdMock = {
       pairing: { createCode: jest.fn() },
       devices: { list: jest.fn(), get: jest.fn() },
@@ -68,6 +71,7 @@ describe('DevicesService (con SDK @ovenbird/node simulado)', () => {
           provide: getRepositoryToken(PairingSession),
           useValue: pairingSessionsRepo,
         },
+        { provide: DomainEventsService, useValue: domainEventsMock },
       ],
     }).compile();
 
@@ -256,6 +260,33 @@ describe('DevicesService (con SDK @ovenbird/node simulado)', () => {
       service.createEmbedToken('user-1', { deviceIds: ['dev-ajeno'] }),
     ).rejects.toMatchObject({
       code: 'DEVICE_NOT_OWNED',
+    });
+
+    // deviceIds vacío -> 400 VALIDATION_ERROR (no cae al else de todos los collares)
+    await expect(
+      service.createEmbedToken('user-1', { deviceIds: [] }),
+    ).rejects.toMatchObject({
+      code: 'VALIDATION_ERROR',
+    });
+  });
+
+  it('desvincula el collar de una mascota y emite pet.device.unlinked', async () => {
+    const pet = {
+      id: 'pet-1',
+      userId: 'user-1',
+      name: 'Luna',
+      species: 'dog',
+      deviceId: 'dev-1',
+    };
+    petsServiceMock.findOneEntityForUser.mockResolvedValue(pet);
+
+    await service.unlinkDeviceFromPet('user-1', 'pet-1');
+
+    expect(pet.deviceId).toBeNull();
+    expect(petsRepo.save).toHaveBeenCalledWith(pet);
+    expect(domainEventsMock.emit).toHaveBeenCalledWith('pet.device.unlinked', {
+      petId: 'pet-1',
+      userId: 'user-1',
     });
   });
 });

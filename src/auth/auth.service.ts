@@ -5,6 +5,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import * as bcrypt from 'bcryptjs';
 import { Repository } from 'typeorm';
 import { ProblemException } from '../common/exceptions/problem.exception';
+import { parseFiniteEnvNumber } from '../config/env.validation';
 import {
   AuthTokenResponse,
   LoginDto,
@@ -25,8 +26,10 @@ export class AuthService {
     private readonly jwtService: JwtService,
     private readonly config: ConfigService,
   ) {
-    this.expiresInSeconds = Number(
+    this.expiresInSeconds = parseFiniteEnvNumber(
       this.config.get<string>('JWT_EXPIRES_IN_SECONDS', '86400'),
+      86400,
+      { min: 1 },
     );
   }
 

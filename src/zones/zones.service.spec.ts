@@ -1,5 +1,6 @@
 import { Test } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
+import { DomainEventsService } from '../common/events/domain-events.service';
 import { PetsService } from '../pets/pets.service';
 import { SafeZone } from './entities/safe-zone.entity';
 import { ZonesService } from './zones.service';
@@ -15,10 +16,12 @@ describe('ZonesService (unitarios con dobles)', () => {
     remove: jest.Mock;
   };
   let petsServiceMock: { findOneEntityForUser: jest.Mock };
+  let domainEventsMock: { emit: jest.Mock };
 
   const now = new Date('2026-11-23T15:00:00.000Z');
 
   beforeEach(async () => {
+    domainEventsMock = { emit: jest.fn().mockResolvedValue(undefined) };
     zonesRepo = {
       findAndCount: jest.fn(),
       find: jest.fn(),
@@ -44,6 +47,7 @@ describe('ZonesService (unitarios con dobles)', () => {
         ZonesService,
         { provide: getRepositoryToken(SafeZone), useValue: zonesRepo },
         { provide: PetsService, useValue: petsServiceMock },
+        { provide: DomainEventsService, useValue: domainEventsMock },
       ],
     }).compile();
 
@@ -65,6 +69,9 @@ describe('ZonesService (unitarios con dobles)', () => {
       shape: 'circle',
       radiusMeters: 100,
       active: true,
+    });
+    expect(domainEventsMock.emit).toHaveBeenCalledWith('pet.zones.changed', {
+      petId: 'pet-1',
     });
   });
 
@@ -93,9 +100,12 @@ describe('ZonesService (unitarios con dobles)', () => {
     expect(updated.centerLon).toBe(-58.381592);
     expect(updated.radiusMeters).toBe(120);
     expect(updated.active).toBe(false);
+    expect(domainEventsMock.emit).toHaveBeenCalledWith('pet.zones.changed', {
+      petId: 'pet-1',
+    });
   });
 
-  it('elimina una zona existente del usuario', async () => {
+  it('elimina una zona existente del usuario y emite pet.zones.changed', async () => {
     const existing = {
       id: 'zone-1',
       userId: 'user-1',
@@ -107,6 +117,9 @@ describe('ZonesService (unitarios con dobles)', () => {
     await service.remove('user-1', 'zone-1');
 
     expect(zonesRepo.remove).toHaveBeenCalledWith(existing);
+    expect(domainEventsMock.emit).toHaveBeenCalledWith('pet.zones.changed', {
+      petId: 'pet-1',
+    });
   });
 
   it('devuelve 404 ZONE_NOT_FOUND si la zona no existe o pertenece a otro usuario', async () => {

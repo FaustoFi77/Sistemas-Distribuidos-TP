@@ -8,8 +8,9 @@ import * as path from 'path';
 import { AuthModule } from './auth/auth.module';
 import { JwtAuthGuard } from './auth/guards/jwt-auth.guard';
 import { CapabilitiesModule } from './capabilities/capabilities.module';
+import { DomainEventsModule } from './common/events/domain-events.module';
 import { LoggerMiddleware } from './common/middleware/logger.middleware';
-import { validateEnv } from './config/env.validation';
+import { parseFiniteEnvNumber, validateEnv } from './config/env.validation';
 import { DevicesModule } from './devices/devices.module';
 import { HealthModule } from './health/health.module';
 import { OvenbirdIntegrationModule } from './ovenbird/ovenbird.integration.module';
@@ -26,8 +27,16 @@ import { ZonesModule } from './zones/zones.module';
       inject: [ConfigService],
       useFactory: (config: ConfigService) => [
         {
-          ttl: Number(config.get<string>('THROTTLE_TTL_MS', '60000')),
-          limit: Number(config.get<string>('THROTTLE_LIMIT', '120')),
+          ttl: parseFiniteEnvNumber(
+            config.get<string>('THROTTLE_TTL_MS', '60000'),
+            60000,
+            { min: 1 },
+          ),
+          limit: parseFiniteEnvNumber(
+            config.get<string>('THROTTLE_LIMIT', '120'),
+            120,
+            { min: 1 },
+          ),
         },
       ],
     }),
@@ -50,6 +59,7 @@ import { ZonesModule } from './zones/zones.module';
         };
       },
     }),
+    DomainEventsModule,
     OvenbirdIntegrationModule,
     HealthModule,
     AuthModule,

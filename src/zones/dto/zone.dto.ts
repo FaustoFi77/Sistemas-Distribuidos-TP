@@ -1,4 +1,5 @@
 import { ApiProperty, ApiPropertyOptional, PartialType } from '@nestjs/swagger';
+import { Transform } from 'class-transformer';
 import {
   IsBoolean,
   IsIn,
@@ -11,10 +12,12 @@ import {
   Min,
 } from 'class-validator';
 import { PaginationQueryDto } from '../../common/dto/pagination.dto';
+import { trimString } from '../../common/dto/transformers';
 import { AlertStatus, AlertType } from '../entities/alert.entity';
 
 export class CreateZoneDto {
   @ApiProperty({ example: 'Casa' })
+  @Transform(trimString)
   @IsString()
   @IsNotEmpty()
   @MaxLength(100)

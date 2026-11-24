@@ -1,4 +1,4 @@
-import { validateEnv } from './env.validation';
+import { parseFiniteEnvNumber, validateEnv } from './env.validation';
 
 describe('validateEnv (fail-fast al arrancar)', () => {
   const validConfig = {
@@ -35,5 +35,15 @@ describe('validateEnv (fail-fast al arrancar)', () => {
         JWT_SECRET: 'una-clave-secreta-larga-y-segura-1234',
       }),
     ).toThrow(/OVENBIRD_CLIENT_ID[\s\S]*OVENBIRD_CLIENT_SECRET/);
+  });
+
+  it('parseFiniteEnvNumber evita NaN/Infinity y aplica límites y fallback', () => {
+    expect(parseFiniteEnvNumber('42', 10)).toBe(42);
+    expect(parseFiniteEnvNumber('abc', 10)).toBe(10);
+    expect(parseFiniteEnvNumber('   ', 10)).toBe(10);
+    expect(parseFiniteEnvNumber('Infinity', 10)).toBe(10);
+    expect(parseFiniteEnvNumber(undefined, 10)).toBe(10);
+    expect(parseFiniteEnvNumber('-5', 10, { min: 0 })).toBe(0);
+    expect(parseFiniteEnvNumber('0.9', 0.1, { min: 0, max: 0.5 })).toBe(0.5);
   });
 });

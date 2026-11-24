@@ -2,6 +2,7 @@ import { ConfigService } from '@nestjs/config';
 import { Test } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { OvenbirdService } from '@ovenbird/node/nest';
+import { DomainEventsService } from '../common/events/domain-events.service';
 import { Pet } from '../pets/entities/pet.entity';
 import { PetsService } from '../pets/pets.service';
 import { Alert } from './entities/alert.entity';
@@ -12,7 +13,9 @@ import { ZonesService } from './zones.service';
 
 describe('MonitoringService (Variante Grupo 3: link-loss-zones)', () => {
   let service: MonitoringService;
+  let domainEvents: DomainEventsService;
   let petsRepo: { findOne: jest.Mock };
+  let petsServiceMock: { findOneEntityForUser: jest.Mock };
   let alertsRepo: {
     findOne: jest.Mock;
     find: jest.Mock;
@@ -44,9 +47,13 @@ describe('MonitoringService (Variante Grupo 3: link-loss-zones)', () => {
 
   beforeEach(async () => {
     storedAlerts = [];
+    domainEvents = new DomainEventsService();
 
     petsRepo = {
       findOne: jest.fn().mockResolvedValue(pet),
+    };
+    petsServiceMock = {
+      findOneEntityForUser: jest.fn().mockResolvedValue(pet),
     };
     alertsRepo = {
       findOne: jest.fn(
@@ -58,8 +65,12 @@ describe('MonitoringService (Variante Grupo 3: link-loss-zones)', () => {
               (!where.status || a.status === where.status),
           ) ?? null,
       ),
-      find: jest.fn(async () =>
-        storedAlerts.filter((a) => a.status === 'active'),
+      find: jest.fn(async ({ where } = {}) =>
+        storedAlerts.filter(
+          (a) =>
+            (!where?.petId || a.petId === where.petId) &&
+            (!where?.status || a.status === where.status),
+        ),
       ),
       findAndCount: jest.fn(async () => [storedAlerts, storedAlerts.length]),
       create: jest.fn((data) => ({
@@ -100,14 +111,16 @@ describe('MonitoringService (Variante Grupo 3: link-loss-zones)', () => {
             },
           },
         },
-        { provide: PetsService, useValue: { findOneEntityForUser: jest.fn() } },
+        { provide: PetsService, useValue: petsServiceMock },
         { provide: ZonesService, useValue: zonesService },
         { provide: getRepositoryToken(Pet), useValue: petsRepo },
         { provide: getRepositoryToken(Alert), useValue: alertsRepo },
+        { provide: DomainEventsService, useValue: domainEvents },
       ],
     }).compile();
 
     service = moduleRef.get(MonitoringService);
+    service.onModuleInit();
   });
 
   afterEach(() => {
@@ -115,7 +128,7 @@ describe('MonitoringService (Variante Grupo 3: link-loss-zones)', () => {
     jest.useRealTimers();
   });
 
-  it('calcula correctamente distancias con Haversine', () => {
+  it('calcula correctamente distancias con Haversine (incluyendo antípodas sin NaN)', () => {
     // 0.001 grados de latitud equivale aprox. a ~111 metros
     const dist = haversineDistanceMeters(
       -34.603722,
@@ -125,6 +138,10 @@ describe('MonitoringService (Variante Grupo 3: link-loss-zones)', () => {
     );
     expect(dist).toBeGreaterThan(105);
     expect(dist).toBeLessThan(118);
+
+    const antipodal = haversineDistanceMeters(0, 0, 0, 180);
+    expect(Number.isFinite(antipodal)).toBe(true);
+    expect(antipodal).toBeGreaterThan(20_000_000);
   });
 
   it('descarta lecturas GPS con fix="none" sin disparar falsas alarmas', async () => {
@@ -279,11 +296,247 @@ describe('MonitoringService (Variante Grupo 3: link-loss-zones)', () => {
       type: 'device.offline',
       data: { deviceId: 'dev-1', ts: new Date().toISOString() },
     });
-    jest.advanceTimersByTime(30_000);
-    await Promise.resolve();
+    await jest.advanceTimersByTimeAsync(30_000);
 
     expect(storedAlerts).toHaveLength(1);
     expect(storedAlerts[0].type).toBe('LINK_LOSS');
     expect(storedAlerts[0].status).toBe('active');
+  });
+
+  it('auto-resuelve LINK_LOSS por device.offline si llega un device.report sin collar_online (sin pisar collar_online=false)', async () => {
+    jest.useFakeTimers();
+
+    // 1. Cae el puente (>30 s) -> LINK_LOSS activa (collarOnline sigue null)
+    await service.handleOvenbirdEvent({
+      id: 'e-off-1',
+      type: 'device.offline',
+      data: { deviceId: 'dev-1', ts: new Date().toISOString() },
+    });
+    await jest.advanceTimersByTimeAsync(30_000);
+    expect(storedAlerts).toHaveLength(1);
+    expect(storedAlerts[0].type).toBe('LINK_LOSS');
+    expect(storedAlerts[0].status).toBe('active');
+
+    // 2. Reconecta enviando un device.report solo con GPS (sin DP collar_online y sin device.online previo)
+    await service.handleOvenbirdEvent({
+      id: 'e-rep-gps',
+      type: 'device.report',
+      data: {
+        deviceId: 'dev-1',
+        ts: new Date().toISOString(),
+        dps: { location: { lat: -34.603722, lon: -58.381592, fix: '3d' } },
+      },
+    });
+    expect(storedAlerts[0].status).toBe('resolved');
+    expect(storedAlerts[0].resolvedAt).not.toBeNull();
+
+    // 3. Si la pérdida fue por collar_online=false, un report sin collar_online NO debe resolverla
+    await service.handleOvenbirdEvent({
+      id: 'e-collar-off',
+      type: 'device.report',
+      data: {
+        deviceId: 'dev-1',
+        ts: new Date().toISOString(),
+        dps: { collar_online: false },
+      },
+    });
+    expect(storedAlerts).toHaveLength(2);
+    expect(storedAlerts[1].status).toBe('active');
+
+    await service.handleOvenbirdEvent({
+      id: 'e-rep-gps-2',
+      type: 'device.report',
+      data: {
+        deviceId: 'dev-1',
+        ts: new Date().toISOString(),
+        dps: { location: { lat: -34.603722, lon: -58.381592, fix: '3d' } },
+      },
+    });
+    expect(storedAlerts[1].status).toBe('active');
+  });
+
+  it('cancela el timer de gracia, limpia el estado en memoria y resuelve alertas al desvincular collar', async () => {
+    jest.useFakeTimers();
+
+    // Reporte inicial con ubicación y alerta LINK_LOSS por collar_online=false + offline grace pendiente
+    await service.handleOvenbirdEvent({
+      id: 'e-init',
+      type: 'device.report',
+      data: {
+        deviceId: 'dev-1',
+        ts: new Date().toISOString(),
+        dps: {
+          collar_online: false,
+          location: { lat: -34.603722, lon: -58.381592, fix: '3d' },
+        },
+      },
+    });
+    await service.handleOvenbirdEvent({
+      id: 'e-off',
+      type: 'device.offline',
+      data: { deviceId: 'dev-1', ts: new Date().toISOString() },
+    });
+    expect(storedAlerts).toHaveLength(1);
+    expect(storedAlerts[0].status).toBe('active');
+
+    // Se desvincula el collar durante la ventana de gracia
+    petsServiceMock.findOneEntityForUser.mockResolvedValue({
+      ...pet,
+      deviceId: null,
+    });
+    await domainEvents.emit('pet.device.unlinked', {
+      petId: 'pet-1',
+      userId: 'user-1',
+    });
+
+    // Avanzar más de 30 s no debe disparar nuevas alertas
+    await jest.advanceTimersByTimeAsync(35_000);
+    expect(storedAlerts).toHaveLength(1);
+    expect(storedAlerts[0].status).toBe('resolved');
+
+    // GET /pets/:petId/monitoring refleja estado limpio
+    const status = await service.getPetMonitoringStatus('user-1', 'pet-1');
+    expect(status.deviceId).toBeNull();
+    expect(status.linkStatus).toBe('unknown');
+    expect(status.collarOnline).toBeNull();
+    expect(status.bridgeOnline).toBeNull();
+    expect(status.lastLocation).toBeNull();
+    expect(status.activeAlerts).toEqual([]);
+  });
+
+  it('revalida en DB en el timer de gracia para no alertar si se borró la mascota o cambió el collar', async () => {
+    jest.useFakeTimers();
+
+    // Caso 1: pet borrada en DB (o evento pet.deleted)
+    await service.handleOvenbirdEvent({
+      id: 'e-off-del',
+      type: 'device.offline',
+      data: { deviceId: 'dev-1', ts: new Date().toISOString() },
+    });
+    petsRepo.findOne.mockResolvedValue(null);
+    await jest.advanceTimersByTimeAsync(30_000);
+    expect(storedAlerts).toHaveLength(0);
+
+    // Caso 2: collar desvinculado/cambiado en DB antes de vencer la gracia
+    petsRepo.findOne.mockResolvedValue(pet);
+    await service.handleOvenbirdEvent({
+      id: 'e-off-unlink',
+      type: 'device.offline',
+      data: { deviceId: 'dev-1', ts: new Date().toISOString() },
+    });
+    petsRepo.findOne.mockResolvedValue({ ...pet, deviceId: null });
+    await jest.advanceTimersByTimeAsync(30_000);
+    expect(storedAlerts).toHaveLength(0);
+
+    // Caso 3: evento pet.deleted limpia estado y cancela timer
+    petsRepo.findOne.mockResolvedValue(pet);
+    await service.handleOvenbirdEvent({
+      id: 'e-off-evt',
+      type: 'device.offline',
+      data: { deviceId: 'dev-1', ts: new Date().toISOString() },
+    });
+    await domainEvents.emit('pet.deleted', { petId: 'pet-1' });
+    await jest.advanceTimersByTimeAsync(35_000);
+    expect(storedAlerts).toHaveLength(0);
+  });
+
+  it('re-evalúa y resuelve ZONE_EXIT al ampliar el radio o desactivar/eliminar la última zona', async () => {
+    const outsideLoc = { lat: -34.605722, lon: -58.381592, fix: '3d' }; // ~222 m
+    await service.handleOvenbirdEvent({
+      id: 'z-out-1',
+      type: 'device.report',
+      data: {
+        deviceId: 'dev-1',
+        ts: new Date().toISOString(),
+        dps: { location: outsideLoc },
+      },
+    });
+    await service.handleOvenbirdEvent({
+      id: 'z-out-2',
+      type: 'device.report',
+      data: {
+        deviceId: 'dev-1',
+        ts: new Date().toISOString(),
+        dps: { location: outsideLoc },
+      },
+    });
+    expect(storedAlerts).toHaveLength(1);
+    expect(storedAlerts[0].type).toBe('ZONE_EXIT');
+    expect(storedAlerts[0].status).toBe('active');
+
+    // Ampliar el radio de Casa a 300 m -> debe resolver ZONE_EXIT inmediatamente
+    zonesService.findActiveEntitiesForPet.mockResolvedValue([
+      { ...homeZone, radiusMeters: 300 },
+    ]);
+    await domainEvents.emit('pet.zones.changed', { petId: 'pet-1' });
+    expect(storedAlerts[0].status).toBe('resolved');
+
+    // Volver a radio 100 m, disparar otra ZONE_EXIT y eliminar/desactivar todas las zonas
+    zonesService.findActiveEntitiesForPet.mockResolvedValue([homeZone]);
+    await service.handleOvenbirdEvent({
+      id: 'z-out-3',
+      type: 'device.report',
+      data: {
+        deviceId: 'dev-1',
+        ts: new Date().toISOString(),
+        dps: { location: outsideLoc },
+      },
+    });
+    await service.handleOvenbirdEvent({
+      id: 'z-out-4',
+      type: 'device.report',
+      data: {
+        deviceId: 'dev-1',
+        ts: new Date().toISOString(),
+        dps: { location: outsideLoc },
+      },
+    });
+    expect(storedAlerts).toHaveLength(2);
+    expect(storedAlerts[1].status).toBe('active');
+
+    zonesService.findActiveEntitiesForPet.mockResolvedValue([]);
+    await domainEvents.emit('pet.zones.changed', { petId: 'pet-1' });
+    expect(storedAlerts[1].status).toBe('resolved');
+  });
+
+  it('tolera variables de entorno numéricas inválidas sin producir NaN', async () => {
+    const moduleRef = await Test.createTestingModule({
+      providers: [
+        MonitoringService,
+        {
+          provide: OvenbirdService,
+          useValue: { events: { subscribe: jest.fn() } },
+        },
+        {
+          provide: ConfigService,
+          useValue: {
+            get: (key: string) => {
+              if (key === 'OVENBIRD_EVENTS_ENABLED') return 'false';
+              return 'not-a-number';
+            },
+          },
+        },
+        { provide: PetsService, useValue: petsServiceMock },
+        { provide: ZonesService, useValue: zonesService },
+        { provide: getRepositoryToken(Pet), useValue: petsRepo },
+        { provide: getRepositoryToken(Alert), useValue: alertsRepo },
+      ],
+    }).compile();
+
+    const safeService = moduleRef.get(MonitoringService);
+    jest.useFakeTimers();
+
+    await safeService.handleOvenbirdEvent({
+      id: 'nan-off',
+      type: 'device.offline',
+      data: { deviceId: 'dev-1', ts: new Date().toISOString() },
+    });
+    // Con fallback seguro de 30 s, a los 10 s todavía no debe disparar alerta
+    await jest.advanceTimersByTimeAsync(10_000);
+    expect(storedAlerts).toHaveLength(0);
+
+    await jest.advanceTimersByTimeAsync(20_000);
+    expect(storedAlerts).toHaveLength(1);
+    safeService.onModuleDestroy();
   });
 });

@@ -1,10 +1,11 @@
-import { HttpStatus, Injectable } from '@nestjs/common';
+import { HttpStatus, Injectable, Optional } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import {
   PaginatedResponse,
   PaginationQueryDto,
 } from '../common/dto/pagination.dto';
+import { DomainEventsService } from '../common/events/domain-events.service';
 import { ProblemException } from '../common/exceptions/problem.exception';
 import { CreatePetDto, PetResponse, UpdatePetDto } from './dto/pet.dto';
 import { Pet } from './entities/pet.entity';
@@ -14,6 +15,8 @@ export class PetsService {
   constructor(
     @InjectRepository(Pet)
     private readonly petsRepo: Repository<Pet>,
+    @Optional()
+    private readonly domainEvents?: DomainEventsService,
   ) {}
 
   async findAllForUser(
@@ -100,6 +103,7 @@ export class PetsService {
       pet.deviceId = null;
       await this.petsRepo.save(pet);
     }
+    await this.domainEvents?.emit('pet.deleted', { petId: pet.id });
     await this.petsRepo.remove(pet);
   }
 

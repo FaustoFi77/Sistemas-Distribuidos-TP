@@ -1,3 +1,20 @@
+export function parseFiniteEnvNumber(
+  value: string | undefined,
+  fallback: number,
+  bounds?: { min?: number; max?: number },
+): number {
+  const trimmed = typeof value === 'string' ? value.trim() : '';
+  const parsed = trimmed === '' ? fallback : Number(trimmed);
+  let result = Number.isFinite(parsed) ? parsed : fallback;
+  if (bounds?.min !== undefined && result < bounds.min) {
+    result = bounds.min;
+  }
+  if (bounds?.max !== undefined && result > bounds.max) {
+    result = bounds.max;
+  }
+  return result;
+}
+
 export function validateEnv(
   config: Record<string, unknown>,
 ): Record<string, unknown> {

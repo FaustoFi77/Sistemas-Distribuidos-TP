@@ -94,4 +94,21 @@ describe('ProblemExceptionFilter (RFC 9457 + Traducción de Ovenbird)', () => {
       expect.objectContaining({ status: 404, code: 'NOT_FOUND' }),
     );
   });
+
+  it('no escribe en la respuesta si headersSent ya es true (p. ej. stream SSE cerrado)', () => {
+    const sseHost = {
+      switchToHttp: () => ({
+        getResponse: () => ({
+          headersSent: true,
+          status: statusMock,
+          setHeader: setHeaderMock,
+        }),
+      }),
+    } as unknown as ArgumentsHost;
+
+    filter.catch(new Error('stream aborted'), sseHost);
+
+    expect(statusMock).not.toHaveBeenCalled();
+    expect(jsonMock).not.toHaveBeenCalled();
+  });
 });

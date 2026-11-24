@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import { DomainEventsModule } from '../common/events/domain-events.module';
 import { PetsModule } from '../pets/pets.module';
 import { AlertsController } from './alerts.controller';
 import { Alert } from './entities/alert.entity';
@@ -9,7 +10,11 @@ import { ZonesController } from './zones.controller';
 import { ZonesService } from './zones.service';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([SafeZone, Alert]), PetsModule],
+  imports: [
+    TypeOrmModule.forFeature([SafeZone, Alert]),
+    PetsModule,
+    DomainEventsModule,
+  ],
   controllers: [ZonesController, AlertsController],
   providers: [ZonesService, MonitoringService],
   exports: [ZonesService, MonitoringService],

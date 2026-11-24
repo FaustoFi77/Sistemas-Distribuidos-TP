@@ -1,15 +1,19 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { Transform } from 'class-transformer';
 import {
   IsEmail,
   IsNotEmpty,
   IsOptional,
   IsString,
+  Matches,
   MaxLength,
   MinLength,
 } from 'class-validator';
+import { trimString } from '../../common/dto/transformers';
 
 export class RegisterDto {
   @ApiProperty({ example: 'juan@ejemplo.com' })
+  @Transform(trimString)
   @IsEmail()
   email: string;
 
@@ -17,9 +21,13 @@ export class RegisterDto {
   @IsString()
   @MinLength(8)
   @MaxLength(128)
+  @Matches(/\S/, {
+    message: 'password no puede contener solo espacios en blanco',
+  })
   password: string;
 
   @ApiProperty({ example: 'Juan Pérez' })
+  @Transform(trimString)
   @IsString()
   @IsNotEmpty()
   @MaxLength(120)

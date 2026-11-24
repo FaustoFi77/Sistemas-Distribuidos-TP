@@ -1,6 +1,8 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { Transform } from 'class-transformer';
 import {
   ArrayMaxSize,
+  ArrayMinSize,
   IsArray,
   IsInt,
   IsNotEmpty,
@@ -10,6 +12,7 @@ import {
   MaxLength,
   Min,
 } from 'class-validator';
+import { trimString } from '../../common/dto/transformers';
 
 export class CreatePairingCodeDto {
   @ApiPropertyOptional({ example: 'Collar de Luna' })
@@ -21,6 +24,7 @@ export class CreatePairingCodeDto {
 
 export class LinkDeviceDto {
   @ApiProperty({ example: 'dev_01abc234' })
+  @Transform(trimString)
   @IsString()
   @IsNotEmpty()
   @MaxLength(128)
@@ -35,6 +39,7 @@ export class CreateEmbedTokenDto {
   })
   @IsOptional()
   @IsArray()
+  @ArrayMinSize(1)
   @ArrayMaxSize(50)
   @IsString({ each: true })
   deviceIds?: string[];

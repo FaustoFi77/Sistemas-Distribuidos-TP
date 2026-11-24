@@ -1,7 +1,8 @@
-import { HttpStatus, Injectable } from '@nestjs/common';
+import { HttpStatus, Injectable, Optional } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { FindOptionsWhere, Repository } from 'typeorm';
 import { PaginatedResponse } from '../common/dto/pagination.dto';
+import { DomainEventsService } from '../common/events/domain-events.service';
 import { ProblemException } from '../common/exceptions/problem.exception';
 import { PetsService } from '../pets/pets.service';
 import {
@@ -18,6 +19,8 @@ export class ZonesService {
     @InjectRepository(SafeZone)
     private readonly zonesRepo: Repository<SafeZone>,
     private readonly petsService: PetsService,
+    @Optional()
+    private readonly domainEvents?: DomainEventsService,
   ) {}
 
   async findAllForUser(
@@ -76,6 +79,7 @@ export class ZonesService {
     });
 
     const saved = await this.zonesRepo.save(zone);
+    await this.domainEvents?.emit('pet.zones.changed', { petId: saved.petId });
     return this.toZoneResponse(saved);
   }
 
@@ -93,12 +97,15 @@ export class ZonesService {
     if (dto.active !== undefined) zone.active = dto.active;
 
     const saved = await this.zonesRepo.save(zone);
+    await this.domainEvents?.emit('pet.zones.changed', { petId: saved.petId });
     return this.toZoneResponse(saved);
   }
 
   async remove(userId: string, zoneId: string): Promise<void> {
     const zone = await this.findOneEntityForUser(userId, zoneId);
+    const petId = zone.petId;
     await this.zonesRepo.remove(zone);
+    await this.domainEvents?.emit('pet.zones.changed', { petId });
   }
 
   async findActiveEntitiesForPet(petId: string): Promise<SafeZone[]> {

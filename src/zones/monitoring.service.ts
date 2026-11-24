@@ -5,6 +5,7 @@ import {
   MessageEvent,
   OnModuleDestroy,
   OnModuleInit,
+  Optional,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
@@ -14,7 +15,9 @@ import { Observable, Subject } from 'rxjs';
 import { filter, map } from 'rxjs/operators';
 import { FindOptionsWhere, Repository } from 'typeorm';
 import { PaginatedResponse } from '../common/dto/pagination.dto';
+import { DomainEventsService } from '../common/events/domain-events.service';
 import { ProblemException } from '../common/exceptions/problem.exception';
+import { parseFiniteEnvNumber } from '../config/env.validation';
 import { Pet } from '../pets/entities/pet.entity';
 import { PetsService } from '../pets/pets.service';
 import {
@@ -56,6 +59,7 @@ export class MonitoringService implements OnModuleInit, OnModuleDestroy {
   private readonly runtimeByPetId = new Map<string, PetRuntimeState>();
   private readonly processedEventIds = new Set<string>();
   private readonly stream$ = new Subject<RealtimeStreamEvent>();
+  private readonly domainEventUnsubscribers: Array<() => void> = [];
   private subscription?: { close: () => void };
 
   private readonly consecutiveOutsideThreshold: number;
@@ -71,22 +75,45 @@ export class MonitoringService implements OnModuleInit, OnModuleDestroy {
     private readonly petsRepo: Repository<Pet>,
     @InjectRepository(Alert)
     private readonly alertsRepo: Repository<Alert>,
+    @Optional()
+    private readonly domainEvents?: DomainEventsService,
   ) {
-    this.consecutiveOutsideThreshold = Math.max(
-      1,
-      Number(this.config.get<string>('ZONE_CONSECUTIVE_OUTSIDE_READINGS', '2')),
+    this.consecutiveOutsideThreshold = parseFiniteEnvNumber(
+      this.config.get<string>('ZONE_CONSECUTIVE_OUTSIDE_READINGS', '2'),
+      2,
+      { min: 1 },
     );
-    const rawRatio = Number(
+    this.hysteresisRatio = parseFiniteEnvNumber(
       this.config.get<string>('ZONE_HYSTERESIS_RATIO', '0.1'),
+      0.1,
+      { min: 0, max: 0.5 },
     );
-    this.hysteresisRatio = Math.min(Math.max(rawRatio, 0), 0.5);
-    this.linkLossGraceMs = Math.max(
-      0,
-      Number(this.config.get<string>('LINK_LOSS_GRACE_SECONDS', '30')) * 1000,
-    );
+    this.linkLossGraceMs =
+      parseFiniteEnvNumber(
+        this.config.get<string>('LINK_LOSS_GRACE_SECONDS', '30'),
+        30,
+        { min: 0 },
+      ) * 1000;
   }
 
   onModuleInit(): void {
+    if (this.domainEvents) {
+      this.domainEventUnsubscribers.push(
+        this.domainEvents.on('pet.deleted', ({ petId }) => {
+          this.handlePetDeleted(petId);
+        }),
+        this.domainEvents.on(
+          'pet.device.unlinked',
+          async ({ petId, userId }) => {
+            await this.handleDeviceUnlinked(petId, userId);
+          },
+        ),
+        this.domainEvents.on('pet.zones.changed', async ({ petId }) => {
+          await this.reevaluateZonesForPet(petId);
+        }),
+      );
+    }
+
     const enabled =
       this.config.get<string>('OVENBIRD_EVENTS_ENABLED', 'true') === 'true';
     const clientId = this.config.get<string>('OVENBIRD_CLIENT_ID', '');
@@ -126,6 +153,10 @@ export class MonitoringService implements OnModuleInit, OnModuleDestroy {
   }
 
   onModuleDestroy(): void {
+    while (this.domainEventUnsubscribers.length > 0) {
+      const unsubscribe = this.domainEventUnsubscribers.pop();
+      unsubscribe?.();
+    }
     if (this.subscription) {
       this.subscription.close();
       this.subscription = undefined;
@@ -213,7 +244,7 @@ export class MonitoringService implements OnModuleInit, OnModuleDestroy {
     );
     const activeAlerts = await this.alertsRepo.find({
       where: { userId, petId: pet.id, status: 'active' },
-      order: { triggeredAt: 'DESC' },
+      order: { triggeredAt: 'DESC', id: 'ASC' },
     });
 
     const evaluatedZones: ZoneEvaluationItem[] = activeZones.map((zone) => {
@@ -269,6 +300,85 @@ export class MonitoringService implements OnModuleInit, OnModuleDestroy {
       zones: evaluatedZones,
       activeAlerts: activeAlerts.map((a) => this.toAlertResponse(a)),
     };
+  }
+
+  handlePetDeleted(petId: string): void {
+    const state = this.runtimeByPetId.get(petId);
+    if (state) {
+      this.cancelOfflineGraceTimer(state);
+      this.runtimeByPetId.delete(petId);
+    }
+  }
+
+  async handleDeviceUnlinked(petId: string, userId: string): Promise<void> {
+    const state = this.runtimeByPetId.get(petId);
+    if (state) {
+      this.cancelOfflineGraceTimer(state);
+      this.runtimeByPetId.delete(petId);
+    }
+
+    const activeAlerts = await this.alertsRepo.find({
+      where: { petId, status: 'active' },
+    });
+    for (const alert of activeAlerts) {
+      alert.status = 'resolved';
+      alert.resolvedAt = new Date();
+      const saved = await this.alertsRepo.save(alert);
+      this.stream$.next({
+        userId: alert.userId,
+        eventType: 'alert.resolved',
+        payload: this.toAlertResponse(saved),
+      });
+    }
+
+    this.stream$.next({
+      userId,
+      eventType: 'monitoring.updated',
+      payload: {
+        petId,
+        deviceId: null,
+        collarOnline: null,
+        bridgeOnline: null,
+        lastSeenAt: null,
+        lastLocation: null,
+      },
+    });
+  }
+
+  async reevaluateZonesForPet(petId: string): Promise<void> {
+    const pet = await this.petsRepo.findOne({ where: { id: petId } });
+    if (!pet) {
+      return;
+    }
+
+    const state = this.runtimeByPetId.get(petId);
+    const activeZones = await this.zonesService.findActiveEntitiesForPet(petId);
+
+    if (activeZones.length === 0) {
+      if (state) {
+        state.consecutiveOutsideCount = 0;
+      }
+      await this.resolveActiveAlert(pet, 'ZONE_EXIT');
+      this.emitMonitoringUpdate(pet);
+      return;
+    }
+
+    if (!state?.lastLocation) {
+      return;
+    }
+
+    const { lat, lon } = state.lastLocation;
+    const insideAny = activeZones.some(
+      (zone) =>
+        haversineDistanceMeters(lat, lon, zone.centerLat, zone.centerLon) <=
+        zone.radiusMeters,
+    );
+
+    if (insideAny) {
+      state.consecutiveOutsideCount = 0;
+      await this.resolveActiveAlert(pet, 'ZONE_EXIT');
+      this.emitMonitoringUpdate(pet);
+    }
   }
 
   /**
@@ -335,6 +445,8 @@ export class MonitoringService implements OnModuleInit, OnModuleDestroy {
         } else {
           await this.resolveActiveAlert(pet, 'LINK_LOSS');
         }
+      } else if (state.collarOnline !== false) {
+        await this.resolveActiveAlert(pet, 'LINK_LOSS');
       }
 
       // 2. Evaluación de ubicación respecto a zonas seguras circulares
@@ -439,20 +551,30 @@ export class MonitoringService implements OnModuleInit, OnModuleDestroy {
 
     const trigger = async () => {
       state.offlineGraceTimer = undefined;
-      if (state.bridgeOnline === false) {
-        await this.openAlertIfAbsent({
-          pet,
-          deviceId,
-          zoneId: null,
-          type: 'LINK_LOSS',
-          message: `La unidad del collar de ${pet.name} perdió conexión con la nube.`,
-          details: {
-            reason: 'bridge_offline',
-            ts,
-            graceSeconds: Math.round(this.linkLossGraceMs / 1000),
-          },
-        });
+      if (this.runtimeByPetId.get(pet.id) !== state) {
+        return;
       }
+      if (state.bridgeOnline !== false) {
+        return;
+      }
+      const currentPet = await this.petsRepo.findOne({
+        where: { id: pet.id },
+      });
+      if (!currentPet || currentPet.deviceId !== deviceId) {
+        return;
+      }
+      await this.openAlertIfAbsent({
+        pet: currentPet,
+        deviceId,
+        zoneId: null,
+        type: 'LINK_LOSS',
+        message: `La unidad del collar de ${currentPet.name} perdió conexión con la nube.`,
+        details: {
+          reason: 'bridge_offline',
+          ts,
+          graceSeconds: Math.round(this.linkLossGraceMs / 1000),
+        },
+      });
     };
 
     if (this.linkLossGraceMs === 0) {

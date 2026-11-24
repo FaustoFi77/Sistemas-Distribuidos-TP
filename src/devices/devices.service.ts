@@ -1,4 +1,4 @@
-import { HttpStatus, Injectable } from '@nestjs/common';
+import { HttpStatus, Injectable, Optional } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Device as OvenbirdDevice } from '@ovenbird/node';
 import { OvenbirdService } from '@ovenbird/node/nest';
@@ -7,6 +7,7 @@ import {
   PaginatedResponse,
   PaginationQueryDto,
 } from '../common/dto/pagination.dto';
+import { DomainEventsService } from '../common/events/domain-events.service';
 import { ProblemException } from '../common/exceptions/problem.exception';
 import { PetResponse } from '../pets/dto/pet.dto';
 import { Pet } from '../pets/entities/pet.entity';
@@ -32,6 +33,8 @@ export class DevicesService {
     private readonly petsRepo: Repository<Pet>,
     @InjectRepository(PairingSession)
     private readonly pairingSessionsRepo: Repository<PairingSession>,
+    @Optional()
+    private readonly domainEvents?: DomainEventsService,
   ) {}
 
   async createPairingCode(
@@ -171,6 +174,10 @@ export class DevicesService {
       pet.deviceId = null;
       await this.petsRepo.save(pet);
     }
+    await this.domainEvents?.emit('pet.device.unlinked', {
+      petId: pet.id,
+      userId,
+    });
   }
 
   async createEmbedToken(
@@ -203,7 +210,15 @@ export class DevicesService {
         });
       }
       targetDeviceIds = [pet.deviceId];
-    } else if (dto.deviceIds && dto.deviceIds.length > 0) {
+    } else if (dto.deviceIds !== undefined) {
+      if (dto.deviceIds.length === 0) {
+        throw new ProblemException({
+          status: HttpStatus.BAD_REQUEST,
+          code: 'VALIDATION_ERROR',
+          title: 'Bad Request',
+          detail: 'deviceIds debe contener al menos un dispositivo.',
+        });
+      }
       const uniqueRequested = Array.from(new Set(dto.deviceIds));
       const unauthorized = uniqueRequested.find(
         (id) => !ownedDeviceIds.has(id),

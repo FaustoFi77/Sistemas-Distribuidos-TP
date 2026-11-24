@@ -1,10 +1,12 @@
 import { Test } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
+import { DomainEventsService } from '../common/events/domain-events.service';
 import { Pet } from './entities/pet.entity';
 import { PetsService } from './pets.service';
 
 describe('PetsService', () => {
   let service: PetsService;
+  let domainEventsMock: { emit: jest.Mock };
   let petsRepo: {
     findAndCount: jest.Mock;
     findOne: jest.Mock;
@@ -16,6 +18,7 @@ describe('PetsService', () => {
   const now = new Date('2026-11-22T20:00:00.000Z');
 
   beforeEach(async () => {
+    domainEventsMock = { emit: jest.fn().mockResolvedValue(undefined) };
     petsRepo = {
       findAndCount: jest.fn(),
       findOne: jest.fn(),
@@ -33,6 +36,7 @@ describe('PetsService', () => {
       providers: [
         PetsService,
         { provide: getRepositoryToken(Pet), useValue: petsRepo },
+        { provide: DomainEventsService, useValue: domainEventsMock },
       ],
     }).compile();
 
@@ -138,7 +142,7 @@ describe('PetsService', () => {
     expect(updated.deviceId).toBe('dev-99');
   });
 
-  it('desvincula el collar antes de eliminar una mascota', async () => {
+  it('desvincula el collar y emite pet.deleted antes de eliminar una mascota', async () => {
     const pet = {
       id: 'pet-1',
       userId: 'user-1',
@@ -154,6 +158,9 @@ describe('PetsService', () => {
 
     expect(pet.deviceId).toBeNull();
     expect(petsRepo.save).toHaveBeenCalledWith(pet);
+    expect(domainEventsMock.emit).toHaveBeenCalledWith('pet.deleted', {
+      petId: 'pet-1',
+    });
     expect(petsRepo.remove).toHaveBeenCalledWith(pet);
   });
 });

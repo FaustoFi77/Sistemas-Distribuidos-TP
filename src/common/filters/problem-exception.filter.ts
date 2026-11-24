@@ -68,6 +68,9 @@ export class ProblemExceptionFilter implements ExceptionFilter {
   catch(exception: unknown, host: ArgumentsHost): void {
     const ctx = host.switchToHttp();
     const response = ctx.getResponse<Response>();
+    if (response.headersSent) {
+      return;
+    }
 
     // 1. Errores de dominio ya construidos en formato RFC 9457
     if (exception instanceof ProblemException) {

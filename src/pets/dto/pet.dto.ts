@@ -1,8 +1,11 @@
 import { ApiProperty, ApiPropertyOptional, PartialType } from '@nestjs/swagger';
+import { Transform } from 'class-transformer';
 import { IsNotEmpty, IsOptional, IsString, MaxLength } from 'class-validator';
+import { trimString } from '../../common/dto/transformers';
 
 export class CreatePetDto {
   @ApiProperty({ example: 'Luna' })
+  @Transform(trimString)
   @IsString()
   @IsNotEmpty()
   @MaxLength(100)
@@ -13,6 +16,7 @@ export class CreatePetDto {
     description:
       'Valores sugeridos: dog, cat, other (acepta strings para interoperabilidad)',
   })
+  @Transform(trimString)
   @IsString()
   @IsNotEmpty()
   @MaxLength(50)

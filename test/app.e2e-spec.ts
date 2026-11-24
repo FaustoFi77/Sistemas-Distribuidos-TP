@@ -5,6 +5,8 @@ import { Test } from '@nestjs/testing';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { OvenbirdService } from '@ovenbird/node/nest';
+import * as http from 'http';
+import { AddressInfo } from 'net';
 import * as request from 'supertest';
 import { configureApp } from '../src/app.setup';
 import { AuthModule } from '../src/auth/auth.module';
@@ -15,6 +17,7 @@ import { DevicesModule } from '../src/devices/devices.module';
 import { HealthModule } from '../src/health/health.module';
 import { OvenbirdIntegrationModule } from '../src/ovenbird/ovenbird.integration.module';
 import { PetsModule } from '../src/pets/pets.module';
+import { MonitoringService } from '../src/zones/monitoring.service';
 import { ZonesModule } from '../src/zones/zones.module';
 
 describe('API REST Interoperabilidad + Variante Grupo 3 (E2E)', () => {
@@ -108,7 +111,7 @@ describe('API REST Interoperabilidad + Variante Grupo 3 (E2E)', () => {
 
     app = moduleRef.createNestApplication();
     configureApp(app);
-    await app.init();
+    await app.listen(0);
   });
 
   afterAll(async () => {
@@ -401,5 +404,310 @@ describe('API REST Interoperabilidad + Variante Grupo 3 (E2E)', () => {
       .get('/api/v1/pets?page=abc')
       .set('Authorization', `Bearer ${tokenB}`)
       .expect(400);
+  });
+
+  it('rechaza deviceIds vacío ([]) y strings de solo espacios con 400 VALIDATION_ERROR', async () => {
+    // RegisterDto con nombre de solo espacios -> 400
+    const badReg = await request(app.getHttpServer())
+      .post('/api/v1/auth/register')
+      .send({
+        email: 'espacios@ejemplo.com',
+        password: 'Password123!',
+        name: '   ',
+      })
+      .expect(400);
+    expect(badReg.body.code).toBe('VALIDATION_ERROR');
+
+    // Crear usuario válido para probar el resto de DTOs
+    const reg = await request(app.getHttpServer())
+      .post('/api/v1/auth/register')
+      .send({
+        email: 'validacion@ejemplo.com',
+        password: 'Password123!',
+        name: 'Validador',
+      })
+      .expect(201);
+    const token = reg.body.accessToken as string;
+
+    // CreatePetDto con name o species solo espacios -> 400
+    await request(app.getHttpServer())
+      .post('/api/v1/pets')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ name: '   ', species: 'dog' })
+      .expect(400);
+
+    await request(app.getHttpServer())
+      .post('/api/v1/pets')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ name: 'Boby', species: '   ' })
+      .expect(400);
+
+    const petRes = await request(app.getHttpServer())
+      .post('/api/v1/pets')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ name: 'Boby', species: 'dog' })
+      .expect(201);
+    const petId = petRes.body.id as string;
+
+    // CreateZoneDto con name solo espacios -> 400
+    await request(app.getHttpServer())
+      .post(`/api/v1/pets/${petId}/zones`)
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        name: '   ',
+        centerLat: -34.603722,
+        centerLon: -58.381592,
+        radiusMeters: 100,
+      })
+      .expect(400);
+
+    // LinkDeviceDto con deviceId solo espacios -> 400
+    await request(app.getHttpServer())
+      .put(`/api/v1/pets/${petId}/device`)
+      .set('Authorization', `Bearer ${token}`)
+      .send({ deviceId: '   ' })
+      .expect(400);
+
+    // CreateEmbedTokenDto con deviceIds: [] -> 400
+    const emptyEmbed = await request(app.getHttpServer())
+      .post('/api/v1/embed-token')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ deviceIds: [] })
+      .expect(400);
+    expect(emptyEmbed.body.code).toBe('VALIDATION_ERROR');
+  });
+
+  it('cubre monitoreo, /alerts, /alerts/:alertId/acknowledge, SSE /alerts/stream, re-evaluación de zonas y DELETEs', async () => {
+    const monitoringService = app.get(MonitoringService);
+
+    // Registrar dos usuarios para probar aislamiento en alertas y deletes
+    const regOwner = await request(app.getHttpServer())
+      .post('/api/v1/auth/register')
+      .send({
+        email: 'monitoreo@ejemplo.com',
+        password: 'Password123!',
+        name: 'Dueño Monitoreo',
+      })
+      .expect(201);
+    const ownerToken = regOwner.body.accessToken as string;
+
+    const regOther = await request(app.getHttpServer())
+      .post('/api/v1/auth/register')
+      .send({
+        email: 'otro-monitoreo@ejemplo.com',
+        password: 'Password123!',
+        name: 'Otro Usuario',
+      })
+      .expect(201);
+    const otherToken = regOther.body.accessToken as string;
+
+    // Crear mascota, vincular collar dev-mon-1 y crear zona segura activa
+    const petRes = await request(app.getHttpServer())
+      .post('/api/v1/pets')
+      .set('Authorization', `Bearer ${ownerToken}`)
+      .send({ name: 'Milo', species: 'dog' })
+      .expect(201);
+    const petId = petRes.body.id as string;
+
+    ovenbirdMock.devices.get.mockResolvedValueOnce({
+      deviceId: 'dev-mon-1',
+      name: 'Collar Milo',
+      productId: 'ob.lora.unit',
+      online: true,
+    });
+    await request(app.getHttpServer())
+      .put(`/api/v1/pets/${petId}/device`)
+      .set('Authorization', `Bearer ${ownerToken}`)
+      .send({ deviceId: 'dev-mon-1' })
+      .expect(200);
+
+    const zoneRes = await request(app.getHttpServer())
+      .post(`/api/v1/pets/${petId}/zones`)
+      .set('Authorization', `Bearer ${ownerToken}`)
+      .send({
+        name: 'Parque',
+        centerLat: -34.603722,
+        centerLon: -58.381592,
+        radiusMeters: 100,
+      })
+      .expect(201);
+    const zoneId = zoneRes.body.id as string;
+
+    // 1. Conectar SSE /api/v1/alerts/stream y verificar emisión en vivo de alert.created
+    const address = app.getHttpServer().address() as AddressInfo;
+    const sseReceived = await new Promise<string>((resolve, reject) => {
+      const req = http.get(
+        {
+          hostname: '127.0.0.1',
+          port: address.port,
+          path: '/api/v1/alerts/stream',
+          headers: { Authorization: `Bearer ${ownerToken}` },
+        },
+        (res) => {
+          expect(res.statusCode).toBe(200);
+          expect(res.headers['content-type']).toContain('text/event-stream');
+
+          let buffer = '';
+          res.on('data', (chunk: Buffer) => {
+            buffer += chunk.toString('utf8');
+            if (buffer.includes('ZONE_EXIT')) {
+              res.destroy();
+              req.destroy();
+              resolve(buffer);
+            }
+          });
+          res.on('error', (err) => {
+            if (!buffer.includes('ZONE_EXIT')) reject(err);
+          });
+
+          // Disparar 2 lecturas fuera de zona (~222 m) + collar_online=false
+          const outsideLoc = { lat: -34.605722, lon: -58.381592, fix: '3d' };
+          void (async () => {
+            await monitoringService.handleOvenbirdEvent({
+              id: 'e2e-out-1',
+              type: 'device.report',
+              data: {
+                deviceId: 'dev-mon-1',
+                ts: new Date().toISOString(),
+                dps: { location: outsideLoc },
+              },
+            });
+            await monitoringService.handleOvenbirdEvent({
+              id: 'e2e-out-2',
+              type: 'device.report',
+              data: {
+                deviceId: 'dev-mon-1',
+                ts: new Date().toISOString(),
+                dps: { location: outsideLoc, collar_online: false },
+              },
+            });
+          })().catch(reject);
+        },
+      );
+      req.on('error', (err) => {
+        if ((err as NodeJS.ErrnoException).code !== 'ECONNRESET') {
+          reject(err);
+        }
+      });
+    });
+    expect(sseReceived).toContain('event: alert.created');
+    expect(sseReceived).toContain('ZONE_EXIT');
+
+    // 2. GET /pets/:petId/monitoring muestra estado en vivo, zona fuera y 2 alertas activas
+    const monRes = await request(app.getHttpServer())
+      .get(`/api/v1/pets/${petId}/monitoring`)
+      .set('Authorization', `Bearer ${ownerToken}`)
+      .expect(200);
+    expect(monRes.body).toMatchObject({
+      petId,
+      deviceId: 'dev-mon-1',
+      linkStatus: 'offline',
+      collarOnline: false,
+      insideSafeArea: false,
+    });
+    expect(monRes.body.zones).toHaveLength(1);
+    expect(monRes.body.zones[0].inside).toBe(false);
+    expect(monRes.body.activeAlerts).toHaveLength(2);
+
+    // 3. GET /alerts paginado y filtrado + aislamiento multiusuario
+    const alertsRes = await request(app.getHttpServer())
+      .get(`/api/v1/alerts?petId=${petId}&status=active&type=ZONE_EXIT`)
+      .set('Authorization', `Bearer ${ownerToken}`)
+      .expect(200);
+    expect(alertsRes.body.meta.total).toBe(1);
+    const zoneAlertId = alertsRes.body.data[0].id as string;
+    expect(alertsRes.body.data[0].acknowledged).toBe(false);
+
+    const otherAlerts = await request(app.getHttpServer())
+      .get('/api/v1/alerts')
+      .set('Authorization', `Bearer ${otherToken}`)
+      .expect(200);
+    expect(otherAlerts.body.data).toEqual([]);
+
+    // 4. POST /alerts/:alertId/acknowledge (200 dueño, 404 ajeno)
+    const ackRes = await request(app.getHttpServer())
+      .post(`/api/v1/alerts/${zoneAlertId}/acknowledge`)
+      .set('Authorization', `Bearer ${ownerToken}`)
+      .expect(200);
+    expect(ackRes.body.acknowledged).toBe(true);
+    expect(ackRes.body.acknowledgedAt).not.toBeNull();
+
+    await request(app.getHttpServer())
+      .post(`/api/v1/alerts/${zoneAlertId}/acknowledge`)
+      .set('Authorization', `Bearer ${otherToken}`)
+      .expect(404);
+
+    // 5. Re-evaluación al ampliar radio por PATCH /zones/:zoneId -> ZONE_EXIT se resuelve inmediatamente
+    await request(app.getHttpServer())
+      .patch(`/api/v1/zones/${zoneId}`)
+      .set('Authorization', `Bearer ${ownerToken}`)
+      .send({ radiusMeters: 500 })
+      .expect(200);
+
+    const monAfterExpand = await request(app.getHttpServer())
+      .get(`/api/v1/pets/${petId}/monitoring`)
+      .set('Authorization', `Bearer ${ownerToken}`)
+      .expect(200);
+    expect(monAfterExpand.body.insideSafeArea).toBe(true);
+    expect(monAfterExpand.body.activeAlerts).toHaveLength(1);
+    expect(monAfterExpand.body.activeAlerts[0].type).toBe('LINK_LOSS');
+
+    // 6. DELETE /zones/:zoneId (404 ajeno, 204 dueño, 404 repetido)
+    await request(app.getHttpServer())
+      .delete(`/api/v1/zones/${zoneId}`)
+      .set('Authorization', `Bearer ${otherToken}`)
+      .expect(404);
+
+    await request(app.getHttpServer())
+      .delete(`/api/v1/zones/${zoneId}`)
+      .set('Authorization', `Bearer ${ownerToken}`)
+      .expect(204);
+
+    await request(app.getHttpServer())
+      .delete(`/api/v1/zones/${zoneId}`)
+      .set('Authorization', `Bearer ${ownerToken}`)
+      .expect(404);
+
+    // 7. DELETE /pets/:petId/device -> 204, limpia estado runtime y resuelve LINK_LOSS activa
+    await request(app.getHttpServer())
+      .delete(`/api/v1/pets/${petId}/device`)
+      .set('Authorization', `Bearer ${ownerToken}`)
+      .expect(204);
+
+    const monAfterUnlink = await request(app.getHttpServer())
+      .get(`/api/v1/pets/${petId}/monitoring`)
+      .set('Authorization', `Bearer ${ownerToken}`)
+      .expect(200);
+    expect(monAfterUnlink.body).toMatchObject({
+      petId,
+      deviceId: null,
+      linkStatus: 'unknown',
+      collarOnline: null,
+      bridgeOnline: null,
+      lastLocation: null,
+      activeAlerts: [],
+    });
+
+    const resolvedAlerts = await request(app.getHttpServer())
+      .get(`/api/v1/alerts?petId=${petId}&status=resolved`)
+      .set('Authorization', `Bearer ${ownerToken}`)
+      .expect(200);
+    expect(resolvedAlerts.body.meta.total).toBe(2);
+
+    // 8. DELETE /pets/:petId -> 404 ajeno, 204 dueño, luego GET -> 404
+    await request(app.getHttpServer())
+      .delete(`/api/v1/pets/${petId}`)
+      .set('Authorization', `Bearer ${otherToken}`)
+      .expect(404);
+
+    await request(app.getHttpServer())
+      .delete(`/api/v1/pets/${petId}`)
+      .set('Authorization', `Bearer ${ownerToken}`)
+      .expect(204);
+
+    await request(app.getHttpServer())
+      .get(`/api/v1/pets/${petId}`)
+      .set('Authorization', `Bearer ${ownerToken}`)
+      .expect(404);
   });
 });

@@ -59,7 +59,9 @@ describe('AuthService', () => {
     );
     const savedArg = usersRepo.save.mock.calls[0][0] as User;
     expect(savedArg.passwordHash).not.toBe('Password123!');
-    expect(await bcrypt.compare('Password123!', savedArg.passwordHash)).toBe(true);
+    expect(await bcrypt.compare('Password123!', savedArg.passwordHash)).toBe(
+      true,
+    );
 
     expect(res).toEqual({
       accessToken: 'signed.jwt.token',
@@ -75,7 +77,10 @@ describe('AuthService', () => {
   });
 
   it('rechaza registro con email duplicado con 409 EMAIL_ALREADY_EXISTS', async () => {
-    usersRepo.findOne.mockResolvedValue({ id: 'existing', email: 'juan@ejemplo.com' });
+    usersRepo.findOne.mockResolvedValue({
+      id: 'existing',
+      email: 'juan@ejemplo.com',
+    });
 
     await expect(
       service.register({

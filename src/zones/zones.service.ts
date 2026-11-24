@@ -35,7 +35,7 @@ export class ZonesService {
 
     const [items, total] = await this.zonesRepo.findAndCount({
       where,
-      order: { createdAt: 'DESC' },
+      order: { createdAt: 'DESC', id: 'ASC' },
       skip: (page - 1) * limit,
       take: limit,
     });
@@ -53,7 +53,7 @@ export class ZonesService {
     await this.petsService.findOneEntityForUser(userId, petId);
     const items = await this.zonesRepo.find({
       where: { userId, petId },
-      order: { createdAt: 'DESC' },
+      order: { createdAt: 'DESC', id: 'ASC' },
     });
     return items.map((z) => this.toZoneResponse(z));
   }
@@ -104,7 +104,7 @@ export class ZonesService {
   async findActiveEntitiesForPet(petId: string): Promise<SafeZone[]> {
     return this.zonesRepo.find({
       where: { petId, active: true },
-      order: { createdAt: 'ASC' },
+      order: { createdAt: 'ASC', id: 'ASC' },
     });
   }
 

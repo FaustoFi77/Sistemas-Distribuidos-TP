@@ -49,15 +49,18 @@ describe('MonitoringService (Variante Grupo 3: link-loss-zones)', () => {
       findOne: jest.fn().mockResolvedValue(pet),
     };
     alertsRepo = {
-      findOne: jest.fn(async ({ where }) =>
-        storedAlerts.find(
-          (a) =>
-            (!where.petId || a.petId === where.petId) &&
-            (!where.type || a.type === where.type) &&
-            (!where.status || a.status === where.status),
-        ) ?? null,
+      findOne: jest.fn(
+        async ({ where }) =>
+          storedAlerts.find(
+            (a) =>
+              (!where.petId || a.petId === where.petId) &&
+              (!where.type || a.type === where.type) &&
+              (!where.status || a.status === where.status),
+          ) ?? null,
       ),
-      find: jest.fn(async () => storedAlerts.filter((a) => a.status === 'active')),
+      find: jest.fn(async () =>
+        storedAlerts.filter((a) => a.status === 'active'),
+      ),
       findAndCount: jest.fn(async () => [storedAlerts, storedAlerts.length]),
       create: jest.fn((data) => ({
         id: `alert-${storedAlerts.length + 1}`,
@@ -147,6 +150,25 @@ describe('MonitoringService (Variante Grupo 3: link-loss-zones)', () => {
     expect(storedAlerts).toHaveLength(0);
   });
 
+  it('es idempotente ante eventos SSE repetidos con el mismo event.id (no los cuenta doble)', async () => {
+    const outsideLoc = { lat: -34.605722, lon: -58.381592, fix: '3d' };
+    const duplicatedEvent = {
+      id: 'evt-duplicado-1',
+      type: 'device.report' as const,
+      data: {
+        deviceId: 'dev-1',
+        ts: new Date().toISOString(),
+        dps: { location: outsideLoc },
+      },
+    };
+
+    // Llega el mismo evento dos veces por reconexión SSE -> debe contar como 1 sola lectura
+    await service.handleOvenbirdEvent(duplicatedEvent);
+    await service.handleOvenbirdEvent(duplicatedEvent);
+
+    expect(storedAlerts).toHaveLength(0);
+  });
+
   it('exige 2 lecturas consecutivas fuera para alertar ZONE_EXIT y aplica histéresis del 10% al volver', async () => {
     // Punto a ~222 m del centro (claramente fuera del radio de 100 m)
     const outsideLoc = { lat: -34.605722, lon: -58.381592, fix: '3d' };
@@ -155,7 +177,11 @@ describe('MonitoringService (Variante Grupo 3: link-loss-zones)', () => {
     await service.handleOvenbirdEvent({
       id: 'e1',
       type: 'device.report',
-      data: { deviceId: 'dev-1', ts: new Date().toISOString(), dps: { location: outsideLoc } },
+      data: {
+        deviceId: 'dev-1',
+        ts: new Date().toISOString(),
+        dps: { location: outsideLoc },
+      },
     });
     expect(storedAlerts).toHaveLength(0);
 
@@ -163,7 +189,11 @@ describe('MonitoringService (Variante Grupo 3: link-loss-zones)', () => {
     await service.handleOvenbirdEvent({
       id: 'e2',
       type: 'device.report',
-      data: { deviceId: 'dev-1', ts: new Date().toISOString(), dps: { location: outsideLoc } },
+      data: {
+        deviceId: 'dev-1',
+        ts: new Date().toISOString(),
+        dps: { location: outsideLoc },
+      },
     });
     expect(storedAlerts).toHaveLength(1);
     expect(storedAlerts[0].type).toBe('ZONE_EXIT');
@@ -174,7 +204,11 @@ describe('MonitoringService (Variante Grupo 3: link-loss-zones)', () => {
     await service.handleOvenbirdEvent({
       id: 'e3',
       type: 'device.report',
-      data: { deviceId: 'dev-1', ts: new Date().toISOString(), dps: { location: borderLoc } },
+      data: {
+        deviceId: 'dev-1',
+        ts: new Date().toISOString(),
+        dps: { location: borderLoc },
+      },
     });
     expect(storedAlerts[0].status).toBe('active');
 
@@ -183,7 +217,11 @@ describe('MonitoringService (Variante Grupo 3: link-loss-zones)', () => {
     await service.handleOvenbirdEvent({
       id: 'e4',
       type: 'device.report',
-      data: { deviceId: 'dev-1', ts: new Date().toISOString(), dps: { location: centerLoc } },
+      data: {
+        deviceId: 'dev-1',
+        ts: new Date().toISOString(),
+        dps: { location: centerLoc },
+      },
     });
     expect(storedAlerts[0].status).toBe('resolved');
     expect(storedAlerts[0].resolvedAt).not.toBeNull();

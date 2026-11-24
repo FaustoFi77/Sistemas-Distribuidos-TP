@@ -33,7 +33,10 @@ describe('ProblemExceptionFilter (RFC 9457 + Traducción de Ovenbird)', () => {
   });
 
   it('traduce OvenbirdNotFoundError a 404 RFC 9457', () => {
-    filter.catch(new OvenbirdNotFoundError(404, 'not_found', 'Not found'), host);
+    filter.catch(
+      new OvenbirdNotFoundError(404, 'not_found', 'Not found'),
+      host,
+    );
 
     expect(statusMock).toHaveBeenCalledWith(404);
     expect(typeMock).toHaveBeenCalledWith('application/problem+json');
@@ -43,11 +46,17 @@ describe('ProblemExceptionFilter (RFC 9457 + Traducción de Ovenbird)', () => {
   });
 
   it('traduce OvenbirdValidationError a 422', () => {
-    filter.catch(new OvenbirdValidationError(422, 'invalid', 'Invalid DP'), host);
+    filter.catch(
+      new OvenbirdValidationError(422, 'invalid', 'Invalid DP'),
+      host,
+    );
 
     expect(statusMock).toHaveBeenCalledWith(422);
     expect(jsonMock).toHaveBeenCalledWith(
-      expect.objectContaining({ status: 422, code: 'OVENBIRD_VALIDATION_ERROR' }),
+      expect.objectContaining({
+        status: 422,
+        code: 'OVENBIRD_VALIDATION_ERROR',
+      }),
     );
   });
 
@@ -65,10 +74,7 @@ describe('ProblemExceptionFilter (RFC 9457 + Traducción de Ovenbird)', () => {
   });
 
   it('traduce OvenbirdAuthError a 502 sin exponer secretos', () => {
-    filter.catch(
-      new OvenbirdAuthError(401, 'auth', 'Bad secret XYZ123'),
-      host,
-    );
+    filter.catch(new OvenbirdAuthError(401, 'auth', 'Bad secret XYZ123'), host);
 
     expect(statusMock).toHaveBeenCalledWith(502);
     const body = jsonMock.mock.calls[0][0];
@@ -77,7 +83,10 @@ describe('ProblemExceptionFilter (RFC 9457 + Traducción de Ovenbird)', () => {
   });
 
   it('convierte NotFoundException (rutas inexistentes de otras variantes) a 404 RFC 9457', () => {
-    filter.catch(new NotFoundException('Cannot POST /api/v1/pets/1/lost'), host);
+    filter.catch(
+      new NotFoundException('Cannot POST /api/v1/pets/1/lost'),
+      host,
+    );
 
     expect(statusMock).toHaveBeenCalledWith(404);
     expect(typeMock).toHaveBeenCalledWith('application/problem+json');

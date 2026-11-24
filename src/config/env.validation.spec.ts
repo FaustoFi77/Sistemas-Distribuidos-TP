@@ -20,13 +20,13 @@ describe('validateEnv (fail-fast al arrancar)', () => {
     ).toThrow(/JWT_SECRET/);
   });
 
-  it('falla al arrancar si JWT_SECRET es demasiado corto', () => {
+  it('falla al arrancar si JWT_SECRET tiene menos de 32 bytes', () => {
     expect(() =>
       validateEnv({
         ...validConfig,
-        JWT_SECRET: 'corto',
+        JWT_SECRET: 'solo-tiene-31-bytes-exactamente',
       }),
-    ).toThrow(/al menos 16 caracteres/);
+    ).toThrow(/al menos 32 bytes/);
   });
 
   it('falla al arrancar si faltan credenciales de Ovenbird', () => {

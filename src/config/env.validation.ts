@@ -7,8 +7,10 @@ export function validateEnv(
     typeof config.JWT_SECRET === 'string' ? config.JWT_SECRET.trim() : '';
   if (!jwtSecret) {
     errors.push('JWT_SECRET es obligatoria y no puede estar vacía.');
-  } else if (jwtSecret.length < 16) {
-    errors.push('JWT_SECRET debe tener al menos 16 caracteres.');
+  } else if (Buffer.byteLength(jwtSecret, 'utf8') < 32) {
+    errors.push(
+      'JWT_SECRET debe tener al menos 32 bytes para firmar HS256 de forma segura.',
+    );
   }
 
   const clientId =
@@ -24,7 +26,9 @@ export function validateEnv(
       ? config.OVENBIRD_CLIENT_SECRET.trim()
       : '';
   if (!clientSecret) {
-    errors.push('OVENBIRD_CLIENT_SECRET es obligatoria y no puede estar vacía.');
+    errors.push(
+      'OVENBIRD_CLIENT_SECRET es obligatoria y no puede estar vacía.',
+    );
   }
 
   if (errors.length > 0) {

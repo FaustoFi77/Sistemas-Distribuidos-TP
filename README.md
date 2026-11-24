@@ -130,8 +130,11 @@ npm run test:e2e
 
 ## Decisiones de diseño y Requisitos No Funcionales (Sección 4 del TP)
 
-- **Seguridad y aislamiento:** contraseñas hasheadas con `bcryptjs` (salt 10), JWT validado en servidor, validación *fail-fast* de variables obligatorias al iniciar (`JWT_SECRET`, `OVENBIRD_CLIENT_ID`, `OVENBIRD_CLIENT_SECRET`, sin valores de respaldo hardcodeados), IDs UUID no predecibles, `404` ante recursos ajenos para evitar enumeración, `OVENBIRD_CLIENT_SECRET` exclusivamente en backend y fuera de Git (`.env` en `.gitignore`).
-- **Confiabilidad de los datos y anti-falsas alarmas:**
+- **Seguridad y aislamiento:** protección **por defecto en toda la API** mediante `JwtAuthGuard` global (`APP_GUARD`) con excepciones explícitas `@Public()`, contraseñas hasheadas con `bcryptjs` (salt 10), JWT con claims estándar (`sub`, `email`, `iss`, `aud`, `exp`), validación *fail-fast* de variables obligatorias al iniciar (`JWT_SECRET` ≥ 32 bytes para HS256, `OVENBIRD_CLIENT_ID`, `OVENBIRD_CLIENT_SECRET`, sin fallbacks hardcodeados), cabeceras HTTP seguras con `helmet`, rate limiting con `@nestjs/throttler` (más estricto en `/auth/login` y `/auth/register`), IDs UUID no predecibles, `404` ante recursos ajenos para evitar enumeración y `OVENBIRD_CLIENT_SECRET` fuera de Git.
+- **Observabilidad y diagnóstico:** `LoggerMiddleware` HTTP (método, ruta, status y duración sin loguear headers sensibles ni contraseñas), `GET /api/v1/health` y pipeline de CI automático en `.github/workflows/ci.yml` (`lint → test → test:e2e → build`).
+- **Confiabilidad de los datos, paginación determinista y anti-falsas alarmas:**
+  - Paginación con orden determinista usando `id` como criterio de desempate (`order: { createdAt: 'DESC', id: 'ASC' }`).
+  - Idempotencia en el consumo de eventos SSE de Ovenbird (cache acotada de los últimos `1000` `event.id` procesados para evitar contar dos veces un reporte repetido ante reconexiones).
   - Se descartan lecturas GPS con `fix === "none"` o coordenadas fuera de rango.
   - **Zonas múltiples:** una mascota se considera segura si está dentro de **al menos una** de sus zonas activas (ej. "Casa" o "Plaza").
   - **Debounce + Histéresis en zonas:** requiere `2` lecturas consecutivas fuera de todas las zonas activas para disparar `ZONE_EXIT` (filtrando saltos aislados de GPS) y exige reingresar al `90%` del radio (`10%` de histéresis) para resolver la alerta sin parpadeos en el borde.

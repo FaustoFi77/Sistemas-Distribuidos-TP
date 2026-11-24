@@ -14,7 +14,10 @@ import {
   OvenbirdValidationError,
 } from '@ovenbird/node';
 import { Response } from 'express';
-import { ProblemDetails, ProblemException } from '../exceptions/problem.exception';
+import {
+  ProblemDetails,
+  ProblemException,
+} from '../exceptions/problem.exception';
 
 const STATUS_TITLES: Record<number, string> = {
   400: 'Bad Request',
@@ -69,10 +72,7 @@ export class ProblemExceptionFilter implements ExceptionFilter {
     // 1. Errores de dominio ya construidos en formato RFC 9457
     if (exception instanceof ProblemException) {
       const body = exception.toProblemDetails();
-      response
-        .status(body.status)
-        .type('application/problem+json')
-        .json(body);
+      response.status(body.status).type('application/problem+json').json(body);
       return;
     }
 
@@ -98,7 +98,10 @@ export class ProblemExceptionFilter implements ExceptionFilter {
     }
 
     if (exception instanceof OvenbirdRateLimitError) {
-      if (typeof exception.retryAfterMs === 'number' && exception.retryAfterMs > 0) {
+      if (
+        typeof exception.retryAfterMs === 'number' &&
+        exception.retryAfterMs > 0
+      ) {
         response.setHeader(
           'Retry-After',
           String(Math.ceil(exception.retryAfterMs / 1000)),
@@ -114,7 +117,9 @@ export class ProblemExceptionFilter implements ExceptionFilter {
     }
 
     if (exception instanceof OvenbirdAuthError) {
-      this.logger.error('Error de autenticación contra Ovenbird IoT Cloud (verificar OVENBIRD_CLIENT_ID / SECRET).');
+      this.logger.error(
+        'Error de autenticación contra Ovenbird IoT Cloud (verificar OVENBIRD_CLIENT_ID / SECRET).',
+      );
       const body = makeProblem(
         HttpStatus.BAD_GATEWAY,
         'OVENBIRD_AUTH_ERROR',
@@ -125,7 +130,9 @@ export class ProblemExceptionFilter implements ExceptionFilter {
     }
 
     if (exception instanceof OvenbirdError) {
-      this.logger.error(`Error de Ovenbird IoT Cloud (status=${exception.status}, code=${exception.code})`);
+      this.logger.error(
+        `Error de Ovenbird IoT Cloud (status=${exception.status}, code=${exception.code})`,
+      );
       const status =
         exception.status >= 500 || exception.status === 0
           ? HttpStatus.SERVICE_UNAVAILABLE

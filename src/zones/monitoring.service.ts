@@ -48,10 +48,13 @@ interface RealtimeStreamEvent {
   payload: unknown;
 }
 
+const MAX_PROCESSED_EVENT_IDS = 1000;
+
 @Injectable()
 export class MonitoringService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(MonitoringService.name);
   private readonly runtimeByPetId = new Map<string, PetRuntimeState>();
+  private readonly processedEventIds = new Set<string>();
   private readonly stream$ = new Subject<RealtimeStreamEvent>();
   private subscription?: { close: () => void };
 
@@ -102,7 +105,9 @@ export class MonitoringService implements OnModuleInit, OnModuleDestroy {
       return;
     }
 
-    this.logger.log('Iniciando suscripción SSE a eventos de Ovenbird IoT Cloud...');
+    this.logger.log(
+      'Iniciando suscripción SSE a eventos de Ovenbird IoT Cloud...',
+    );
     this.subscription = this.ovenbird.events.subscribe({
       types: ['device.report', 'device.online', 'device.offline'],
       onEvent: (event) => {
@@ -137,12 +142,10 @@ export class MonitoringService implements OnModuleInit, OnModuleDestroy {
   streamEventsForUser(userId: string): Observable<MessageEvent> {
     return this.stream$.asObservable().pipe(
       filter((evt) => evt.userId === userId),
-      map(
-        (evt): MessageEvent => ({
-          type: evt.eventType,
-          data: evt.payload as string | object,
-        }),
-      ),
+      map((evt): MessageEvent => ({
+        type: evt.eventType,
+        data: evt.payload as string | object,
+      })),
     );
   }
 
@@ -163,7 +166,7 @@ export class MonitoringService implements OnModuleInit, OnModuleDestroy {
 
     const [items, total] = await this.alertsRepo.findAndCount({
       where,
-      order: { triggeredAt: 'DESC' },
+      order: { triggeredAt: 'DESC', id: 'ASC' },
       skip: (page - 1) * limit,
       take: limit,
     });
@@ -205,7 +208,9 @@ export class MonitoringService implements OnModuleInit, OnModuleDestroy {
   ): Promise<PetMonitoringResponse> {
     const pet = await this.petsService.findOneEntityForUser(userId, petId);
     const state = this.getOrInitState(pet.id);
-    const activeZones = await this.zonesService.findActiveEntitiesForPet(pet.id);
+    const activeZones = await this.zonesService.findActiveEntitiesForPet(
+      pet.id,
+    );
     const activeAlerts = await this.alertsRepo.find({
       where: { userId, petId: pet.id, status: 'active' },
       order: { triggeredAt: 'DESC' },
@@ -267,10 +272,17 @@ export class MonitoringService implements OnModuleInit, OnModuleDestroy {
   }
 
   /**
-   * Procesa un evento proveniente de Ovenbird IoT Cloud.
+   * Procesa un evento proveniente de Ovenbird IoT Cloud de forma idempotente.
    * Expuesto como método público para facilitar pruebas unitarias determinísticas con Jest.
    */
   async handleOvenbirdEvent(event: OvenbirdEvent): Promise<void> {
+    if (event.id) {
+      if (this.processedEventIds.has(event.id)) {
+        return;
+      }
+      this.recordProcessedEventId(event.id);
+    }
+
     if (event.type === 'command.updated') {
       return;
     }
@@ -328,10 +340,7 @@ export class MonitoringService implements OnModuleInit, OnModuleDestroy {
       // 2. Evaluación de ubicación respecto a zonas seguras circulares
       if (dps.location !== undefined && isLocation(dps.location)) {
         const loc = dps.location;
-        if (
-          loc.fix !== 'none' &&
-          isValidCoordinate(loc.lat, loc.lon)
-        ) {
+        if (loc.fix !== 'none' && isValidCoordinate(loc.lat, loc.lon)) {
           state.lastLocation = {
             lat: loc.lat,
             lon: loc.lon,
@@ -354,7 +363,9 @@ export class MonitoringService implements OnModuleInit, OnModuleDestroy {
   ): Promise<void> {
     if (!state.lastLocation) return;
 
-    const activeZones = await this.zonesService.findActiveEntitiesForPet(pet.id);
+    const activeZones = await this.zonesService.findActiveEntitiesForPet(
+      pet.id,
+    );
     if (activeZones.length === 0) {
       state.consecutiveOutsideCount = 0;
       await this.resolveActiveAlert(pet, 'ZONE_EXIT');
@@ -543,6 +554,16 @@ export class MonitoringService implements OnModuleInit, OnModuleDestroy {
         lastLocation: state.lastLocation,
       },
     });
+  }
+
+  private recordProcessedEventId(eventId: string): void {
+    this.processedEventIds.add(eventId);
+    if (this.processedEventIds.size > MAX_PROCESSED_EVENT_IDS) {
+      const first = this.processedEventIds.values().next();
+      if (!first.done) {
+        this.processedEventIds.delete(first.value);
+      }
+    }
   }
 
   private getOrInitState(petId: string): PetRuntimeState {

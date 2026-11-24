@@ -15,7 +15,11 @@ describe('DevicesService (con SDK @ovenbird/node simulado)', () => {
     embed: { createToken: jest.Mock };
   };
   let petsRepo: { find: jest.Mock; findOne: jest.Mock; save: jest.Mock };
-  let pairingSessionsRepo: { create: jest.Mock; save: jest.Mock; find: jest.Mock };
+  let pairingSessionsRepo: {
+    create: jest.Mock;
+    save: jest.Mock;
+    find: jest.Mock;
+  };
   let petsServiceMock: {
     findOneEntityForUser: jest.Mock;
     toPetResponse: jest.Mock;
@@ -77,7 +81,9 @@ describe('DevicesService (con SDK @ovenbird/node simulado)', () => {
       expiresAt,
     });
 
-    const res = await service.createPairingCode('user-1', { label: 'Collar 1' });
+    const res = await service.createPairingCode('user-1', {
+      label: 'Collar 1',
+    });
 
     expect(ovenbirdMock.pairing.createCode).toHaveBeenCalledWith({
       label: 'Collar 1',
@@ -145,15 +151,21 @@ describe('DevicesService (con SDK @ovenbird/node simulado)', () => {
 
     expect(res.meta.total).toBe(2);
     expect(res.data.map((d) => d.deviceId)).toEqual([
-      'dev-mine',
       'dev-fresh-unlinked',
+      'dev-mine',
     ]);
-    expect(res.data[0].petId).toBe('pet-1');
-    expect(res.data[1].petId).toBeNull();
+    expect(res.data[0].petId).toBeNull();
+    expect(res.data[1].petId).toBe('pet-1');
   });
 
   it('vincula un collar a una mascota y es idempotente si se repite el mismo deviceId', async () => {
-    const pet = { id: 'pet-1', userId: 'user-1', name: 'Luna', species: 'dog', deviceId: null };
+    const pet = {
+      id: 'pet-1',
+      userId: 'user-1',
+      name: 'Luna',
+      species: 'dog',
+      deviceId: null,
+    };
     petsServiceMock.findOneEntityForUser.mockResolvedValue(pet);
     petsRepo.findOne.mockResolvedValue(null);
     ovenbirdMock.devices.get.mockResolvedValue({ deviceId: 'dev-1' });

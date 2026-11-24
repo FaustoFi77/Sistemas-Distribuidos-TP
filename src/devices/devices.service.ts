@@ -110,6 +110,8 @@ export class DevicesService {
       }
     }
 
+    visibleDevices.sort((a, b) => a.deviceId.localeCompare(b.deviceId));
+
     const total = visibleDevices.length;
     const start = (page - 1) * limit;
     const data = visibleDevices.slice(start, start + limit);
@@ -187,25 +189,32 @@ export class DevicesService {
     let targetDeviceIds: string[];
 
     if (dto.petId) {
-      const pet = await this.petsService.findOneEntityForUser(userId, dto.petId);
+      const pet = await this.petsService.findOneEntityForUser(
+        userId,
+        dto.petId,
+      );
       if (!pet.deviceId) {
         throw new ProblemException({
           status: HttpStatus.CONFLICT,
           code: 'NO_LINKED_DEVICES',
           title: 'Conflict',
-          detail: 'La mascota seleccionada no tiene ningún dispositivo vinculado.',
+          detail:
+            'La mascota seleccionada no tiene ningún dispositivo vinculado.',
         });
       }
       targetDeviceIds = [pet.deviceId];
     } else if (dto.deviceIds && dto.deviceIds.length > 0) {
       const uniqueRequested = Array.from(new Set(dto.deviceIds));
-      const unauthorized = uniqueRequested.find((id) => !ownedDeviceIds.has(id));
+      const unauthorized = uniqueRequested.find(
+        (id) => !ownedDeviceIds.has(id),
+      );
       if (unauthorized) {
         throw new ProblemException({
           status: HttpStatus.FORBIDDEN,
           code: 'DEVICE_NOT_OWNED',
           title: 'Forbidden',
-          detail: 'Uno o más dispositivos solicitados no pertenecen a tus mascotas.',
+          detail:
+            'Uno o más dispositivos solicitados no pertenecen a tus mascotas.',
         });
       }
       targetDeviceIds = uniqueRequested.slice(0, MAX_EMBED_DEVICES);

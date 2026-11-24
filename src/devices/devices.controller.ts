@@ -9,7 +9,6 @@ import {
   Post,
   Put,
   Query,
-  UseGuards,
 } from '@nestjs/common';
 import {
   ApiBearerAuth,
@@ -19,7 +18,6 @@ import {
 } from '@nestjs/swagger';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { UserResponse } from '../auth/dto/auth.dto';
-import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import {
   PaginatedResponse,
   PaginationQueryDto,
@@ -37,7 +35,6 @@ import {
 
 @ApiTags('Devices & Pairing')
 @ApiBearerAuth('bearer')
-@UseGuards(JwtAuthGuard)
 @Controller()
 export class DevicesController {
   constructor(private readonly devicesService: DevicesService) {}
@@ -46,7 +43,10 @@ export class DevicesController {
   @ApiOperation({
     summary: 'Generar código de emparejamiento de un solo uso (vigente 10 min)',
   })
-  @ApiResponse({ status: 201, description: 'Código generado en Ovenbird Cloud' })
+  @ApiResponse({
+    status: 201,
+    description: 'Código generado en Ovenbird Cloud',
+  })
   createPairingCode(
     @CurrentUser() user: UserResponse,
     @Body() dto: CreatePairingCodeDto,
@@ -68,10 +68,21 @@ export class DevicesController {
   }
 
   @Put('pets/:petId/device')
-  @ApiOperation({ summary: 'Vincular un dispositivo a una mascota (idempotente)' })
-  @ApiResponse({ status: 200, description: 'Mascota actualizada con el dispositivo' })
-  @ApiResponse({ status: 404, description: 'Mascota o dispositivo no encontrado' })
-  @ApiResponse({ status: 409, description: 'Mascota o dispositivo ya vinculados' })
+  @ApiOperation({
+    summary: 'Vincular un dispositivo a una mascota (idempotente)',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Mascota actualizada con el dispositivo',
+  })
+  @ApiResponse({
+    status: 404,
+    description: 'Mascota o dispositivo no encontrado',
+  })
+  @ApiResponse({
+    status: 409,
+    description: 'Mascota o dispositivo ya vinculados',
+  })
   linkDevice(
     @CurrentUser() user: UserResponse,
     @Param('petId') petId: string,
@@ -95,14 +106,24 @@ export class DevicesController {
   @Post('embed-token')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
-    summary: 'Emitir token de corta duración para el mapa embebido (@ovenbird/react)',
+    summary:
+      'Emitir token de corta duración para el mapa embebido (@ovenbird/react)',
   })
   @ApiResponse({ status: 200, description: 'Token de embebido emitido' })
   @ApiResponse({ status: 400, description: 'Datos inválidos (RFC 9457)' })
   @ApiResponse({ status: 401, description: 'No autenticado' })
-  @ApiResponse({ status: 403, description: 'Dispositivo no pertenece al usuario' })
-  @ApiResponse({ status: 404, description: 'Mascota indicada en petId no encontrada' })
-  @ApiResponse({ status: 409, description: 'El usuario no tiene dispositivos vinculados' })
+  @ApiResponse({
+    status: 403,
+    description: 'Dispositivo no pertenece al usuario',
+  })
+  @ApiResponse({
+    status: 404,
+    description: 'Mascota indicada en petId no encontrada',
+  })
+  @ApiResponse({
+    status: 409,
+    description: 'El usuario no tiene dispositivos vinculados',
+  })
   createEmbedToken(
     @CurrentUser() user: UserResponse,
     @Body() dto: CreateEmbedTokenDto,

@@ -30,7 +30,8 @@ export class LinkDeviceDto {
 export class CreateEmbedTokenDto {
   @ApiPropertyOptional({
     type: [String],
-    description: 'Lista opcional de deviceIds del usuario (1 a 50). Si se omite, incluye todos los collares vinculados del usuario.',
+    description:
+      'Lista opcional de deviceIds del usuario (1 a 50). Si se omite, incluye todos los collares vinculados del usuario.',
   })
   @IsOptional()
   @IsArray()
@@ -39,7 +40,8 @@ export class CreateEmbedTokenDto {
   deviceIds?: string[];
 
   @ApiPropertyOptional({
-    description: 'Opcional: emitir token solo para el dispositivo vinculado a esta mascota',
+    description:
+      'Opcional: emitir token solo para el dispositivo vinculado a esta mascota',
   })
   @IsOptional()
   @IsString()

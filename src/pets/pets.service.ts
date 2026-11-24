@@ -25,7 +25,7 @@ export class PetsService {
 
     const [items, total] = await this.petsRepo.findAndCount({
       where: { userId },
-      order: { createdAt: 'DESC' },
+      order: { createdAt: 'DESC', id: 'ASC' },
       skip: (page - 1) * limit,
       take: limit,
     });
@@ -80,7 +80,8 @@ export class PetsService {
 
     if (dto.name !== undefined) pet.name = dto.name.trim();
     if (dto.species !== undefined) pet.species = dto.species.trim();
-    if (dto.breed !== undefined) pet.breed = dto.breed ? dto.breed.trim() : null;
+    if (dto.breed !== undefined)
+      pet.breed = dto.breed ? dto.breed.trim() : null;
     if (dto.birthDate !== undefined) {
       pet.birthDate = dto.birthDate ? dto.birthDate.trim() : null;
     }

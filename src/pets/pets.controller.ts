@@ -9,7 +9,6 @@ import {
   Patch,
   Post,
   Query,
-  UseGuards,
 } from '@nestjs/common';
 import {
   ApiBearerAuth,
@@ -19,7 +18,6 @@ import {
 } from '@nestjs/swagger';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { UserResponse } from '../auth/dto/auth.dto';
-import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import {
   PaginatedResponse,
   PaginationQueryDto,
@@ -29,13 +27,14 @@ import { PetsService } from './pets.service';
 
 @ApiTags('Pets')
 @ApiBearerAuth('bearer')
-@UseGuards(JwtAuthGuard)
 @Controller('pets')
 export class PetsController {
   constructor(private readonly petsService: PetsService) {}
 
   @Get()
-  @ApiOperation({ summary: 'Listar mascotas del usuario autenticado (paginado)' })
+  @ApiOperation({
+    summary: 'Listar mascotas del usuario autenticado (paginado)',
+  })
   @ApiResponse({ status: 200, description: 'Lista paginada de mascotas' })
   findAll(
     @CurrentUser() user: UserResponse,
@@ -80,7 +79,9 @@ export class PetsController {
 
   @Delete(':petId')
   @HttpCode(HttpStatus.NO_CONTENT)
-  @ApiOperation({ summary: 'Eliminar una mascota (desvincula collar si tenía)' })
+  @ApiOperation({
+    summary: 'Eliminar una mascota (desvincula collar si tenía)',
+  })
   @ApiResponse({ status: 204, description: 'Mascota eliminada' })
   @ApiResponse({ status: 404, description: 'Mascota no encontrada' })
   remove(

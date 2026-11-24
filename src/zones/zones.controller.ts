@@ -9,7 +9,6 @@ import {
   Patch,
   Post,
   Query,
-  UseGuards,
 } from '@nestjs/common';
 import {
   ApiBearerAuth,
@@ -20,7 +19,6 @@ import {
 } from '@nestjs/swagger';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { UserResponse } from '../auth/dto/auth.dto';
-import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { PaginatedResponse } from '../common/dto/pagination.dto';
 import {
   CreateZoneDto,
@@ -32,7 +30,6 @@ import { ZonesService } from './zones.service';
 
 @ApiTags('Zones (link-loss-zones)')
 @ApiBearerAuth('bearer')
-@UseGuards(JwtAuthGuard)
 @Controller()
 export class ZonesController {
   constructor(private readonly zonesService: ZonesService) {}
@@ -40,9 +37,13 @@ export class ZonesController {
   @Get('zones')
   @ApiExtension('x-variant', 'link-loss-zones')
   @ApiOperation({
-    summary: 'Listar todas las zonas seguras del usuario (opcionalmente filtrar por petId)',
+    summary:
+      'Listar todas las zonas seguras del usuario (opcionalmente filtrar por petId)',
   })
-  @ApiResponse({ status: 200, description: 'Lista paginada de zonas circulares' })
+  @ApiResponse({
+    status: 200,
+    description: 'Lista paginada de zonas circulares',
+  })
   findAll(
     @CurrentUser() user: UserResponse,
     @Query() query: ZoneQueryDto,
@@ -53,7 +54,10 @@ export class ZonesController {
   @Get('pets/:petId/zones')
   @ApiExtension('x-variant', 'link-loss-zones')
   @ApiOperation({ summary: 'Listar zonas seguras de una mascota' })
-  @ApiResponse({ status: 200, description: 'Lista de zonas circulares de la mascota' })
+  @ApiResponse({
+    status: 200,
+    description: 'Lista de zonas circulares de la mascota',
+  })
   @ApiResponse({ status: 404, description: 'Mascota no encontrada' })
   findAllForPet(
     @CurrentUser() user: UserResponse,

@@ -1,10 +1,5 @@
 import { ApiProperty, ApiPropertyOptional, PartialType } from '@nestjs/swagger';
-import {
-  IsNotEmpty,
-  IsOptional,
-  IsString,
-  MaxLength,
-} from 'class-validator';
+import { IsNotEmpty, IsOptional, IsString, MaxLength } from 'class-validator';
 
 export class CreatePetDto {
   @ApiProperty({ example: 'Luna' })
@@ -15,7 +10,8 @@ export class CreatePetDto {
 
   @ApiProperty({
     example: 'dog',
-    description: 'Valores sugeridos: dog, cat, other (acepta strings para interoperabilidad)',
+    description:
+      'Valores sugeridos: dog, cat, other (acepta strings para interoperabilidad)',
   })
   @IsString()
   @IsNotEmpty()
@@ -34,7 +30,10 @@ export class CreatePetDto {
   @MaxLength(40)
   birthDate?: string | null;
 
-  @ApiPropertyOptional({ example: 'https://ejemplo.com/luna.jpg', nullable: true })
+  @ApiPropertyOptional({
+    example: 'https://ejemplo.com/luna.jpg',
+    nullable: true,
+  })
   @IsOptional()
   @IsString()
   @MaxLength(500)

@@ -4,6 +4,7 @@ import { JwtService } from '@nestjs/jwt';
 import { InjectRepository } from '@nestjs/typeorm';
 import * as bcrypt from 'bcryptjs';
 import { Repository } from 'typeorm';
+import { isUniqueConstraintError } from '../common/exceptions/db-error.utils';
 import { ProblemException } from '../common/exceptions/problem.exception';
 import { parseFiniteEnvNumber } from '../config/env.validation';
 import {
@@ -55,7 +56,20 @@ export class AuthService {
       name: dto.name.trim(),
       phone: dto.phone?.trim() || null,
     });
-    const saved = await this.usersRepo.save(user);
+    let saved: User;
+    try {
+      saved = await this.usersRepo.save(user);
+    } catch (err) {
+      if (isUniqueConstraintError(err)) {
+        throw new ProblemException({
+          status: HttpStatus.CONFLICT,
+          code: 'EMAIL_ALREADY_EXISTS',
+          title: 'Conflict',
+          detail: 'Ya existe una cuenta registrada con ese correo electrónico.',
+        });
+      }
+      throw err;
+    }
 
     return this.buildAuthToken(saved);
   }

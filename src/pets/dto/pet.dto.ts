@@ -1,6 +1,10 @@
 import { ApiProperty, ApiPropertyOptional, PartialType } from '@nestjs/swagger';
 import { Transform } from 'class-transformer';
 import { IsNotEmpty, IsOptional, IsString, MaxLength } from 'class-validator';
+import {
+  PaginatedResponse,
+  PaginationMetaDto,
+} from '../../common/dto/pagination.dto';
 import { trimString } from '../../common/dto/transformers';
 
 export class CreatePetDto {
@@ -56,4 +60,45 @@ export interface PetResponse {
   deviceId: string | null;
   createdAt: string;
   updatedAt: string;
+}
+
+export class PetResponseDto implements PetResponse {
+  @ApiProperty({ example: '550e8400-e29b-41d4-a716-446655440000' })
+  id: string;
+
+  @ApiProperty({ example: 'Luna' })
+  name: string;
+
+  @ApiProperty({ example: 'dog' })
+  species: string;
+
+  @ApiProperty({ type: String, example: 'Golden Retriever', nullable: true })
+  breed: string | null;
+
+  @ApiProperty({ type: String, example: '2022-05-14', nullable: true })
+  birthDate: string | null;
+
+  @ApiProperty({
+    type: String,
+    example: 'https://ejemplo.com/luna.jpg',
+    nullable: true,
+  })
+  photoUrl: string | null;
+
+  @ApiProperty({ type: String, example: 'dev_01abc234', nullable: true })
+  deviceId: string | null;
+
+  @ApiProperty({ example: '2026-06-01T12:00:00.000Z' })
+  createdAt: string;
+
+  @ApiProperty({ example: '2026-06-01T12:00:00.000Z' })
+  updatedAt: string;
+}
+
+export class PaginatedPetResponseDto implements PaginatedResponse<PetResponseDto> {
+  @ApiProperty({ type: () => [PetResponseDto] })
+  data: PetResponseDto[];
+
+  @ApiProperty({ type: () => PaginationMetaDto })
+  meta: PaginationMetaDto;
 }

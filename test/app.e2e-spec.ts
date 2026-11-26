@@ -149,6 +149,28 @@ describe('API REST Interoperabilidad + Variante Grupo 3 (E2E)', () => {
     expect(docsRes.body.paths['/api/v1/zones'].get['x-variant']).toBe(
       'link-loss-zones',
     );
+
+    const schemas = docsRes.body.components?.schemas ?? {};
+    const expectedSchemas = [
+      'AuthTokenResponseDto',
+      'UserResponseDto',
+      'PetResponseDto',
+      'PaginatedPetResponseDto',
+      'DeviceResponseDto',
+      'PaginatedDeviceResponseDto',
+      'PairingCodeResponseDto',
+      'EmbedTokenResponseDto',
+      'CapabilitiesResponseDto',
+      'HealthResponseDto',
+      'SafeZoneResponseDto',
+      'PaginatedSafeZoneResponseDto',
+      'AlertResponseDto',
+      'PaginatedAlertResponseDto',
+      'PetMonitoringResponseDto',
+    ];
+    for (const schemaName of expectedSchemas) {
+      expect(schemas[schemaName]).toBeDefined();
+    }
   });
 
   it('GET /api devuelve 404 (Swagger solo está montado en /api/docs)', async () => {

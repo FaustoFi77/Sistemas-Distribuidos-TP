@@ -22,7 +22,9 @@ import { UserResponse } from '../auth/dto/auth.dto';
 import { PaginatedResponse } from '../common/dto/pagination.dto';
 import {
   CreateZoneDto,
+  PaginatedSafeZoneResponseDto,
   SafeZoneResponse,
+  SafeZoneResponseDto,
   UpdateZoneDto,
   ZoneQueryDto,
 } from './dto/zone.dto';
@@ -43,6 +45,7 @@ export class ZonesController {
   @ApiResponse({
     status: 200,
     description: 'Lista paginada de zonas circulares',
+    type: PaginatedSafeZoneResponseDto,
   })
   findAll(
     @CurrentUser() user: UserResponse,
@@ -57,6 +60,7 @@ export class ZonesController {
   @ApiResponse({
     status: 200,
     description: 'Lista de zonas circulares de la mascota',
+    type: [SafeZoneResponseDto],
   })
   @ApiResponse({ status: 404, description: 'Mascota no encontrada' })
   findAllForPet(
@@ -69,7 +73,11 @@ export class ZonesController {
   @Post('pets/:petId/zones')
   @ApiExtension('x-variant', 'link-loss-zones')
   @ApiOperation({ summary: 'Crear una zona segura circular para una mascota' })
-  @ApiResponse({ status: 201, description: 'Zona creada' })
+  @ApiResponse({
+    status: 201,
+    description: 'Zona creada',
+    type: SafeZoneResponseDto,
+  })
   @ApiResponse({ status: 404, description: 'Mascota no encontrada' })
   createForPet(
     @CurrentUser() user: UserResponse,
@@ -82,7 +90,11 @@ export class ZonesController {
   @Patch('zones/:zoneId')
   @ApiExtension('x-variant', 'link-loss-zones')
   @ApiOperation({ summary: 'Actualizar una zona segura circular' })
-  @ApiResponse({ status: 200, description: 'Zona actualizada' })
+  @ApiResponse({
+    status: 200,
+    description: 'Zona actualizada',
+    type: SafeZoneResponseDto,
+  })
   @ApiResponse({ status: 404, description: 'Zona no encontrada' })
   update(
     @CurrentUser() user: UserResponse,

@@ -12,6 +12,10 @@ import {
   MaxLength,
   Min,
 } from 'class-validator';
+import {
+  PaginatedResponse,
+  PaginationMetaDto,
+} from '../../common/dto/pagination.dto';
 import { trimString } from '../../common/dto/transformers';
 
 export class CreatePairingCodeDto {
@@ -69,6 +73,14 @@ export interface PairingCodeResponse {
   expiresAt: string;
 }
 
+export class PairingCodeResponseDto implements PairingCodeResponse {
+  @ApiProperty({ example: 'A1B2C3' })
+  code: string;
+
+  @ApiProperty({ example: '2026-06-01T12:10:00.000Z' })
+  expiresAt: string;
+}
+
 export interface DeviceResponse {
   deviceId: string;
   name: string;
@@ -78,7 +90,51 @@ export interface DeviceResponse {
   petId: string | null;
 }
 
+export class DeviceResponseDto implements DeviceResponse {
+  @ApiProperty({ example: 'dev_01abc234' })
+  deviceId: string;
+
+  @ApiProperty({ example: 'Collar de Luna' })
+  name: string;
+
+  @ApiProperty({ example: 'ob.lora.unit' })
+  productId: string;
+
+  @ApiProperty({ example: true })
+  online: boolean;
+
+  @ApiProperty({
+    type: String,
+    example: '2026-06-01T12:00:00.000Z',
+    nullable: true,
+  })
+  lastSeenAt: string | null;
+
+  @ApiProperty({
+    type: String,
+    example: '550e8400-e29b-41d4-a716-446655440000',
+    nullable: true,
+  })
+  petId: string | null;
+}
+
+export class PaginatedDeviceResponseDto implements PaginatedResponse<DeviceResponseDto> {
+  @ApiProperty({ type: () => [DeviceResponseDto] })
+  data: DeviceResponseDto[];
+
+  @ApiProperty({ type: () => PaginationMetaDto })
+  meta: PaginationMetaDto;
+}
+
 export interface EmbedTokenResponse {
   token: string;
+  expiresAt: string;
+}
+
+export class EmbedTokenResponseDto implements EmbedTokenResponse {
+  @ApiProperty({ example: 'ob_emb_eyJhbGciOi...' })
+  token: string;
+
+  @ApiProperty({ example: '2026-06-01T12:15:00.000Z' })
   expiresAt: string;
 }

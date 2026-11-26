@@ -22,7 +22,13 @@ import {
   PaginatedResponse,
   PaginationQueryDto,
 } from '../common/dto/pagination.dto';
-import { CreatePetDto, PetResponse, UpdatePetDto } from './dto/pet.dto';
+import {
+  CreatePetDto,
+  PaginatedPetResponseDto,
+  PetResponse,
+  PetResponseDto,
+  UpdatePetDto,
+} from './dto/pet.dto';
 import { PetsService } from './pets.service';
 
 @ApiTags('Pets')
@@ -35,7 +41,11 @@ export class PetsController {
   @ApiOperation({
     summary: 'Listar mascotas del usuario autenticado (paginado)',
   })
-  @ApiResponse({ status: 200, description: 'Lista paginada de mascotas' })
+  @ApiResponse({
+    status: 200,
+    description: 'Lista paginada de mascotas',
+    type: PaginatedPetResponseDto,
+  })
   findAll(
     @CurrentUser() user: UserResponse,
     @Query() query: PaginationQueryDto,
@@ -45,7 +55,11 @@ export class PetsController {
 
   @Post()
   @ApiOperation({ summary: 'Crear una nueva mascota' })
-  @ApiResponse({ status: 201, description: 'Mascota creada' })
+  @ApiResponse({
+    status: 201,
+    description: 'Mascota creada',
+    type: PetResponseDto,
+  })
   @ApiResponse({ status: 400, description: 'Datos inválidos (RFC 9457)' })
   create(
     @CurrentUser() user: UserResponse,
@@ -56,7 +70,11 @@ export class PetsController {
 
   @Get(':petId')
   @ApiOperation({ summary: 'Obtener detalle de una mascota del usuario' })
-  @ApiResponse({ status: 200, description: 'Detalle de la mascota' })
+  @ApiResponse({
+    status: 200,
+    description: 'Detalle de la mascota',
+    type: PetResponseDto,
+  })
   @ApiResponse({ status: 404, description: 'Mascota no encontrada' })
   findOne(
     @CurrentUser() user: UserResponse,
@@ -67,7 +85,11 @@ export class PetsController {
 
   @Patch(':petId')
   @ApiOperation({ summary: 'Actualizar parcialmente una mascota' })
-  @ApiResponse({ status: 200, description: 'Mascota actualizada' })
+  @ApiResponse({
+    status: 200,
+    description: 'Mascota actualizada',
+    type: PetResponseDto,
+  })
   @ApiResponse({ status: 404, description: 'Mascota no encontrada' })
   update(
     @CurrentUser() user: UserResponse,

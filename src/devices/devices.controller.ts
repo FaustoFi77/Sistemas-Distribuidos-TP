@@ -22,15 +22,18 @@ import {
   PaginatedResponse,
   PaginationQueryDto,
 } from '../common/dto/pagination.dto';
-import { PetResponse } from '../pets/dto/pet.dto';
+import { PetResponse, PetResponseDto } from '../pets/dto/pet.dto';
 import { DevicesService } from './devices.service';
 import {
   CreateEmbedTokenDto,
   CreatePairingCodeDto,
   DeviceResponse,
   EmbedTokenResponse,
+  EmbedTokenResponseDto,
   LinkDeviceDto,
+  PaginatedDeviceResponseDto,
   PairingCodeResponse,
+  PairingCodeResponseDto,
 } from './dto/device.dto';
 
 @ApiTags('Devices & Pairing')
@@ -46,6 +49,7 @@ export class DevicesController {
   @ApiResponse({
     status: 201,
     description: 'Código generado en Ovenbird Cloud',
+    type: PairingCodeResponseDto,
   })
   createPairingCode(
     @CurrentUser() user: UserResponse,
@@ -59,7 +63,11 @@ export class DevicesController {
     summary:
       'Listar dispositivos del usuario (vinculados + recién emparejados en ventana de 10 min)',
   })
-  @ApiResponse({ status: 200, description: 'Lista paginada de dispositivos' })
+  @ApiResponse({
+    status: 200,
+    description: 'Lista paginada de dispositivos',
+    type: PaginatedDeviceResponseDto,
+  })
   listDevices(
     @CurrentUser() user: UserResponse,
     @Query() query: PaginationQueryDto,
@@ -74,6 +82,7 @@ export class DevicesController {
   @ApiResponse({
     status: 200,
     description: 'Mascota actualizada con el dispositivo',
+    type: PetResponseDto,
   })
   @ApiResponse({
     status: 404,
@@ -109,7 +118,11 @@ export class DevicesController {
     summary:
       'Emitir token de corta duración para el mapa embebido (@ovenbird/react)',
   })
-  @ApiResponse({ status: 200, description: 'Token de embebido emitido' })
+  @ApiResponse({
+    status: 200,
+    description: 'Token de embebido emitido',
+    type: EmbedTokenResponseDto,
+  })
   @ApiResponse({ status: 400, description: 'Datos inválidos (RFC 9457)' })
   @ApiResponse({ status: 401, description: 'No autenticado' })
   @ApiResponse({

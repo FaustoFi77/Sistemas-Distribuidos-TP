@@ -2,12 +2,13 @@ import { HttpStatus, Injectable, Optional } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Device as OvenbirdDevice } from '@ovenbird/node';
 import { OvenbirdService } from '@ovenbird/node/nest';
-import { IsNull, MoreThanOrEqual, Not, Repository } from 'typeorm';
+import { IsNull, LessThan, MoreThanOrEqual, Not, Repository } from 'typeorm';
 import {
   PaginatedResponse,
   PaginationQueryDto,
 } from '../common/dto/pagination.dto';
 import { DomainEventsService } from '../common/events/domain-events.service';
+import { isUniqueConstraintError } from '../common/exceptions/db-error.utils';
 import { ProblemException } from '../common/exceptions/problem.exception';
 import { PetResponse } from '../pets/dto/pet.dto';
 import { Pet } from '../pets/entities/pet.entity';
@@ -42,6 +43,12 @@ export class DevicesService {
     dto: CreatePairingCodeDto,
   ): Promise<PairingCodeResponse> {
     const now = new Date();
+    if (typeof this.pairingSessionsRepo.delete === 'function') {
+      await this.pairingSessionsRepo.delete({
+        expiresAt: LessThan(now),
+      });
+    }
+
     const result = await this.ovenbird.pairing.createCode(
       dto.label ? { label: dto.label.trim() } : undefined,
     );
@@ -164,7 +171,20 @@ export class DevicesService {
     await this.ovenbird.devices.get(trimmedDeviceId);
 
     pet.deviceId = trimmedDeviceId;
-    const saved = await this.petsRepo.save(pet);
+    let saved: Pet;
+    try {
+      saved = await this.petsRepo.save(pet);
+    } catch (err) {
+      if (isUniqueConstraintError(err)) {
+        throw new ProblemException({
+          status: HttpStatus.CONFLICT,
+          code: 'DEVICE_ALREADY_LINKED',
+          title: 'Conflict',
+          detail: 'El dispositivo ya está vinculado a otra mascota.',
+        });
+      }
+      throw err;
+    }
     return this.petsService.toPetResponse(saved);
   }
 
@@ -193,24 +213,8 @@ export class DevicesService {
         .filter((id): id is string => Boolean(id)),
     );
 
-    let targetDeviceIds: string[];
-
-    if (dto.petId) {
-      const pet = await this.petsService.findOneEntityForUser(
-        userId,
-        dto.petId,
-      );
-      if (!pet.deviceId) {
-        throw new ProblemException({
-          status: HttpStatus.CONFLICT,
-          code: 'NO_LINKED_DEVICES',
-          title: 'Conflict',
-          detail:
-            'La mascota seleccionada no tiene ningún dispositivo vinculado.',
-        });
-      }
-      targetDeviceIds = [pet.deviceId];
-    } else if (dto.deviceIds !== undefined) {
+    let requestedDeviceIds: string[] | undefined;
+    if (dto.deviceIds !== undefined) {
       if (dto.deviceIds.length === 0) {
         throw new ProblemException({
           status: HttpStatus.BAD_REQUEST,
@@ -232,7 +236,40 @@ export class DevicesService {
             'Uno o más dispositivos solicitados no pertenecen a tus mascotas.',
         });
       }
-      targetDeviceIds = uniqueRequested.slice(0, MAX_EMBED_DEVICES);
+      requestedDeviceIds = uniqueRequested;
+    }
+
+    let targetDeviceIds: string[];
+
+    if (dto.petId) {
+      const pet = await this.petsService.findOneEntityForUser(
+        userId,
+        dto.petId,
+      );
+      if (!pet.deviceId) {
+        throw new ProblemException({
+          status: HttpStatus.CONFLICT,
+          code: 'NO_LINKED_DEVICES',
+          title: 'Conflict',
+          detail:
+            'La mascota seleccionada no tiene ningún dispositivo vinculado.',
+        });
+      }
+      if (
+        requestedDeviceIds !== undefined &&
+        !requestedDeviceIds.includes(pet.deviceId)
+      ) {
+        throw new ProblemException({
+          status: HttpStatus.BAD_REQUEST,
+          code: 'VALIDATION_ERROR',
+          title: 'Bad Request',
+          detail:
+            'El dispositivo vinculado a la mascota no coincide con deviceIds.',
+        });
+      }
+      targetDeviceIds = [pet.deviceId];
+    } else if (requestedDeviceIds !== undefined) {
+      targetDeviceIds = requestedDeviceIds.slice(0, MAX_EMBED_DEVICES);
     } else {
       targetDeviceIds = Array.from(ownedDeviceIds).slice(0, MAX_EMBED_DEVICES);
       if (targetDeviceIds.length === 0) {

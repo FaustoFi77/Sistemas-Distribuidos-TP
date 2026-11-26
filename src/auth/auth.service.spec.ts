@@ -93,6 +93,35 @@ describe('AuthService', () => {
     });
   });
 
+  it('traduce violación UNIQUE concurrente (TOCTOU) en usersRepo.save a 409 EMAIL_ALREADY_EXISTS y propaga otros errores', async () => {
+    usersRepo.findOne.mockResolvedValue(null);
+    usersRepo.save.mockRejectedValueOnce(
+      Object.assign(new Error('UNIQUE constraint failed: users.email'), {
+        code: 'SQLITE_CONSTRAINT_UNIQUE',
+      }),
+    );
+
+    await expect(
+      service.register({
+        email: 'race@ejemplo.com',
+        password: 'Password123!',
+        name: 'Race',
+      }),
+    ).rejects.toMatchObject({
+      status: 409,
+      code: 'EMAIL_ALREADY_EXISTS',
+    });
+
+    usersRepo.save.mockRejectedValueOnce(new Error('Disk I/O error'));
+    await expect(
+      service.register({
+        email: 'io@ejemplo.com',
+        password: 'Password123!',
+        name: 'IO',
+      }),
+    ).rejects.toThrow('Disk I/O error');
+  });
+
   it('permite login con credenciales válidas', async () => {
     const hash = await bcrypt.hash('MiClaveSegura!', 4);
     usersRepo.findOne.mockResolvedValue({

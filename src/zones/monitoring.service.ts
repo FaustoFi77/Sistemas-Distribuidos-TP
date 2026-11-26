@@ -239,6 +239,18 @@ export class MonitoringService implements OnModuleInit, OnModuleDestroy {
   ): Promise<PetMonitoringResponse> {
     const pet = await this.petsService.findOneEntityForUser(userId, petId);
     const state = this.getOrInitState(pet.id);
+
+    if (
+      pet.deviceId &&
+      state.lastLocation === null &&
+      state.lastSeenAt === null &&
+      state.bridgeOnline === null &&
+      state.collarOnline === null &&
+      typeof this.ovenbird.devices?.status === 'function'
+    ) {
+      await this.hydrateRuntimeStateFromCloud(pet.deviceId, state);
+    }
+
     const activeZones = await this.zonesService.findActiveEntitiesForPet(
       pet.id,
     );
@@ -368,16 +380,80 @@ export class MonitoringService implements OnModuleInit, OnModuleDestroy {
     }
 
     const { lat, lon } = state.lastLocation;
-    const insideAny = activeZones.some(
-      (zone) =>
-        haversineDistanceMeters(lat, lon, zone.centerLat, zone.centerLon) <=
-        zone.radiusMeters,
+    const distances = activeZones.map((zone) => ({
+      zone,
+      distanceMeters: haversineDistanceMeters(
+        lat,
+        lon,
+        zone.centerLat,
+        zone.centerLon,
+      ),
+    }));
+
+    const insideAny = distances.some(
+      (item) => item.distanceMeters <= item.zone.radiusMeters,
     );
 
     if (insideAny) {
       state.consecutiveOutsideCount = 0;
-      await this.resolveActiveAlert(pet, 'ZONE_EXIT');
-      this.emitMonitoringUpdate(pet);
+
+      const insideWithHysteresis = distances.some(
+        (item) =>
+          item.distanceMeters <=
+          item.zone.radiusMeters * (1 - this.hysteresisRatio),
+      );
+      if (insideWithHysteresis) {
+        await this.resolveActiveAlert(pet, 'ZONE_EXIT');
+      }
+    }
+
+    this.emitMonitoringUpdate(pet);
+  }
+
+  private async hydrateRuntimeStateFromCloud(
+    deviceId: string,
+    state: PetRuntimeState,
+  ): Promise<void> {
+    try {
+      const status = await this.ovenbird.devices.status(deviceId);
+      if (state.bridgeOnline === null && typeof status.online === 'boolean') {
+        state.bridgeOnline = status.online;
+      }
+      if (state.lastSeenAt === null) {
+        state.lastSeenAt = status.lastSeenAt
+          ? status.lastSeenAt.toISOString()
+          : null;
+      }
+      if (
+        state.collarOnline === null &&
+        typeof status.dps?.collar_online?.value === 'boolean'
+      ) {
+        state.collarOnline = status.dps.collar_online.value;
+      }
+      const locationDp = status.dps?.location;
+      if (
+        state.lastLocation === null &&
+        locationDp?.value !== undefined &&
+        isLocation(locationDp.value)
+      ) {
+        const loc = locationDp.value;
+        if (loc.fix !== 'none' && isValidCoordinate(loc.lat, loc.lon)) {
+          state.lastLocation = {
+            lat: loc.lat,
+            lon: loc.lon,
+            hdop: loc.hdop,
+            fix: loc.fix,
+            ts:
+              locationDp.ts instanceof Date
+                ? locationDp.ts.toISOString()
+                : new Date().toISOString(),
+          };
+        }
+      }
+    } catch (err) {
+      this.logger.warn(
+        `No se pudo hidratar estado inicial del dispositivo ${deviceId} desde Ovenbird: ${err instanceof Error ? err.message : String(err)}`,
+      );
     }
   }
 

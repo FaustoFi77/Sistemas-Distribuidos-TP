@@ -19,10 +19,11 @@ flowchart LR
 ### Módulos
 - `src/auth`: registro, login, perfil (`/auth/me`), hashing de contraseñas con `bcryptjs`, JWT con Passport (`JwtAuthGuard`).
 - `src/pets`: CRUD paginado de mascotas con aislamiento estricto por usuario (`404 PET_NOT_FOUND` para recursos ajenos) y desvinculación automática al borrar.
-- `src/devices`: generación de códigos de emparejamiento (`ob.pairing.createCode`), listado filtrado por usuario y ventana de 10 minutos (`GET /devices`), vínculo/desvínculo mascota–collar y emisión de tokens de embebido (`ob.embed.createToken`).
+- `src/devices`: generación de códigos de emparejamiento (`ob.pairing.createCode`) con limpieza de sesiones vencidas, listado filtrado por usuario y ventana de 10 minutos (`GET /devices`), vínculo/desvínculo mascota–collar y emisión de tokens de embebido (`ob.embed.createToken`).
 - `src/capabilities`: expone `GET /api/v1/capabilities` con `{ apiVersion: "1", variants: ["link-loss-zones"] }`.
-- `src/zones`: CRUD de zonas seguras circulares, motor de evaluación geodésica (**Haversine**), detección de pérdida de enlace, historial de alertas, reconocimiento y stream **SSE**.
-- `src/common`: filtro global **RFC 9457** (`application/problem+json`) con traducción de errores del SDK `@ovenbird/node` y `ValidationPipe` tolerante.
+- `src/health`: expone `GET /api/v1/health` público (exento de rate limiting) para verificación de disponibilidad del servicio.
+- `src/zones`: CRUD de zonas seguras circulares, motor de evaluación geodésica (**Haversine**), hidratación inicial desde Ovenbird, detección de pérdida de enlace, historial de alertas, reconocimiento y stream **SSE**.
+- `src/common`: filtro global **RFC 9457** (`application/problem+json`) con traducción de errores del SDK `@ovenbird/node`, `ValidationPipe` tolerante y bus de eventos tipado en memoria (`DomainEventsService`) para desacoplar módulos sin dependencias circulares.
 
 ---
 
@@ -52,8 +53,12 @@ cp .env.example .env
 | --- | --- | --- |
 | `PORT` | Puerto HTTP del backend | `3001` |
 | `DATABASE_PATH` | Ruta al archivo SQLite (se crea automáticamente) | `./data/iot-pets.db` |
-| `JWT_SECRET` | Clave secreta para firmar JWT (usar una clave larga en producción) | — |
+| `JWT_SECRET` | Clave secreta para firmar JWT (al menos 32 bytes para HS256) | — |
 | `JWT_EXPIRES_IN_SECONDS` | Duración del token JWT en segundos | `86400` (24 h) |
+| `JWT_ISSUER` | Claim `iss` firmado y validado en los tokens JWT | `iot-pets-backend` |
+| `JWT_AUDIENCE` | Claim `aud` firmado y validado en los tokens JWT | `iot-pets-web` |
+| `THROTTLE_TTL_MS` | Ventana de rate limiting global en milisegundos | `60000` (60 s) |
+| `THROTTLE_LIMIT` | Máximo de solicitudes por IP dentro de `THROTTLE_TTL_MS` | `120` |
 | `OVENBIRD_URL` | URL base de Ovenbird IoT Cloud | `https://iotplatform.ovenbirdconsulting.com.ar` |
 | `OVENBIRD_CLIENT_ID` | Client ID de integrador del grupo (solo backend) | — |
 | `OVENBIRD_CLIENT_SECRET` | Client Secret del grupo (**nunca** exponer en frontend ni repo) | — |
@@ -110,6 +115,8 @@ npm run test:e2e
 | `POST` | `/api/v1/embed-token` | Bearer | Token corto para `@ovenbird/react` (`200`) |
 | `GET` | `/api/v1/capabilities` | Pública | `{ apiVersion: "1", variants: ["link-loss-zones"] }` |
 | `GET` | `/api/v1/health` | Pública | Health check del servidor (`{ status: "ok", timestamp }`) |
+
+> **Nota sobre el Dispositivo Virtual de Ovenbird:** los dispositivos virtuales creados desde el panel web de Ovenbird ya existen en el tenant sin pasar por la ventana de 10 minutos de `POST /api/v1/pairing-codes` (por lo que no aparecen como libres en `GET /api/v1/devices`). Para usarlos, copiá su `deviceId` desde el panel de Ovenbird y vinculalo directamente a tu mascota con `PUT /api/v1/pets/:petId/device` enviando `{ "deviceId": "<id-del-dispositivo-virtual>" }`; a partir de ese momento quedará asociado a tu mascota y visible en `GET /api/v1/devices`.
 
 ### Variante Grupo 3 (`x-variant: link-loss-zones`)
 | Método | Ruta | Auth | Descripción |

@@ -20,6 +20,7 @@ describe('DevicesService (con SDK @ovenbird/node simulado)', () => {
     create: jest.Mock;
     save: jest.Mock;
     find: jest.Mock;
+    delete?: jest.Mock;
   };
   let petsServiceMock: {
     findOneEntityForUser: jest.Mock;
@@ -45,6 +46,7 @@ describe('DevicesService (con SDK @ovenbird/node simulado)', () => {
       create: jest.fn((data) => ({ id: 'ps-1', ...data })),
       save: jest.fn(async (s) => s),
       find: jest.fn(),
+      delete: jest.fn().mockResolvedValue({ affected: 1 }),
     };
     petsServiceMock = {
       findOneEntityForUser: jest.fn(),
@@ -78,7 +80,7 @@ describe('DevicesService (con SDK @ovenbird/node simulado)', () => {
     service = moduleRef.get(DevicesService);
   });
 
-  it('genera código de emparejamiento y guarda sesión para filtrar dispositivos', async () => {
+  it('genera código de emparejamiento, limpia sesiones vencidas y guarda sesión para filtrar dispositivos', async () => {
     const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
     ovenbirdMock.pairing.createCode.mockResolvedValue({
       code: 'ABC123',
@@ -89,6 +91,10 @@ describe('DevicesService (con SDK @ovenbird/node simulado)', () => {
       label: 'Collar 1',
     });
 
+    expect(pairingSessionsRepo.delete).toHaveBeenCalledTimes(1);
+    const deleteArg = pairingSessionsRepo.delete?.mock.calls[0][0];
+    expect(deleteArg.expiresAt._type).toBe('lessThan');
+    expect(deleteArg.expiresAt._value).toBeInstanceOf(Date);
     expect(ovenbirdMock.pairing.createCode).toHaveBeenCalledWith({
       label: 'Collar 1',
     });
@@ -197,7 +203,7 @@ describe('DevicesService (con SDK @ovenbird/node simulado)', () => {
     });
   });
 
-  it('devuelve 409 DEVICE_ALREADY_LINKED si el collar pertenece a otra mascota', async () => {
+  it('devuelve 409 DEVICE_ALREADY_LINKED si el collar pertenece a otra mascota o ante colisión UNIQUE concurrente', async () => {
     petsServiceMock.findOneEntityForUser.mockResolvedValue({
       id: 'pet-1',
       userId: 'user-1',
@@ -208,6 +214,22 @@ describe('DevicesService (con SDK @ovenbird/node simulado)', () => {
     await expect(
       service.linkDeviceToPet('user-1', 'pet-1', 'dev-1'),
     ).rejects.toMatchObject({
+      code: 'DEVICE_ALREADY_LINKED',
+    });
+
+    // Carrera TOCTOU: pasa el findOne inicial pero choca contra el índice UNIQUE al guardar
+    petsRepo.findOne.mockResolvedValue(null);
+    ovenbirdMock.devices.get.mockResolvedValue({ deviceId: 'dev-race' });
+    petsRepo.save.mockRejectedValueOnce(
+      Object.assign(new Error('UNIQUE constraint failed: pets.deviceId'), {
+        code: 'SQLITE_CONSTRAINT_UNIQUE',
+      }),
+    );
+
+    await expect(
+      service.linkDeviceToPet('user-1', 'pet-1', 'dev-race'),
+    ).rejects.toMatchObject({
+      status: 409,
       code: 'DEVICE_ALREADY_LINKED',
     });
   });
@@ -268,6 +290,85 @@ describe('DevicesService (con SDK @ovenbird/node simulado)', () => {
     ).rejects.toMatchObject({
       code: 'VALIDATION_ERROR',
     });
+  });
+
+  it('valida combinación simultánea de petId + deviceIds en createEmbedToken', async () => {
+    petsRepo.find.mockResolvedValue([
+      { id: 'pet-1', userId: 'user-1', deviceId: 'dev-1' },
+      { id: 'pet-2', userId: 'user-1', deviceId: 'dev-2' },
+    ]);
+
+    // 1. deviceIds vacío junto con petId -> 400 VALIDATION_ERROR
+    await expect(
+      service.createEmbedToken('user-1', { petId: 'pet-1', deviceIds: [] }),
+    ).rejects.toMatchObject({
+      status: 400,
+      code: 'VALIDATION_ERROR',
+    });
+
+    // 2. deviceIds con dispositivo ajeno junto con petId -> 403 DEVICE_NOT_OWNED
+    await expect(
+      service.createEmbedToken('user-1', {
+        petId: 'pet-1',
+        deviceIds: ['dev-1', 'dev-ajeno'],
+      }),
+    ).rejects.toMatchObject({
+      status: 403,
+      code: 'DEVICE_NOT_OWNED',
+    });
+
+    // 3. petId sin dispositivo vinculado junto con deviceIds propios -> 409 NO_LINKED_DEVICES
+    petsServiceMock.findOneEntityForUser.mockResolvedValueOnce({
+      id: 'pet-3',
+      userId: 'user-1',
+      deviceId: null,
+    });
+    await expect(
+      service.createEmbedToken('user-1', {
+        petId: 'pet-3',
+        deviceIds: ['dev-1'],
+      }),
+    ).rejects.toMatchObject({
+      status: 409,
+      code: 'NO_LINKED_DEVICES',
+    });
+
+    // 4. pet.deviceId no incluido en deviceIds propios -> 400 VALIDATION_ERROR
+    petsServiceMock.findOneEntityForUser.mockResolvedValueOnce({
+      id: 'pet-1',
+      userId: 'user-1',
+      deviceId: 'dev-1',
+    });
+    await expect(
+      service.createEmbedToken('user-1', {
+        petId: 'pet-1',
+        deviceIds: ['dev-2'],
+      }),
+    ).rejects.toMatchObject({
+      status: 400,
+      code: 'VALIDATION_ERROR',
+    });
+
+    // 5. Combinación coherente -> 200 emitiendo token para el dispositivo de petId
+    const exp = new Date(Date.now() + 900 * 1000);
+    petsServiceMock.findOneEntityForUser.mockResolvedValueOnce({
+      id: 'pet-1',
+      userId: 'user-1',
+      deviceId: 'dev-1',
+    });
+    ovenbirdMock.embed.createToken.mockResolvedValueOnce({
+      token: 'combo-tok',
+      expiresAt: exp,
+    });
+
+    const okRes = await service.createEmbedToken('user-1', {
+      petId: 'pet-1',
+      deviceIds: ['dev-1', 'dev-2'],
+    });
+    expect(ovenbirdMock.embed.createToken).toHaveBeenLastCalledWith({
+      deviceIds: ['dev-1'],
+    });
+    expect(okRes.token).toBe('combo-tok');
   });
 
   it('desvincula el collar de una mascota y emite pet.device.unlinked', async () => {

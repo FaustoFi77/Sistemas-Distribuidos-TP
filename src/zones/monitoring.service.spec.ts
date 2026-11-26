@@ -24,6 +24,7 @@ describe('MonitoringService (Variante Grupo 3: link-loss-zones)', () => {
     save: jest.Mock;
   };
   let zonesService: { findActiveEntitiesForPet: jest.Mock };
+  let ovenbirdDevicesStatus: jest.Mock;
   let storedAlerts: Alert[];
 
   const pet: Partial<Pet> = {
@@ -91,13 +92,22 @@ describe('MonitoringService (Variante Grupo 3: link-loss-zones)', () => {
     zonesService = {
       findActiveEntitiesForPet: jest.fn().mockResolvedValue([homeZone]),
     };
+    ovenbirdDevicesStatus = jest.fn().mockResolvedValue({
+      deviceId: 'dev-1',
+      online: false,
+      lastSeenAt: null,
+      dps: {},
+    });
 
     const moduleRef = await Test.createTestingModule({
       providers: [
         MonitoringService,
         {
           provide: OvenbirdService,
-          useValue: { events: { subscribe: jest.fn() } },
+          useValue: {
+            events: { subscribe: jest.fn() },
+            devices: { status: ovenbirdDevicesStatus },
+          },
         },
         {
           provide: ConfigService,
@@ -440,8 +450,8 @@ describe('MonitoringService (Variante Grupo 3: link-loss-zones)', () => {
     expect(storedAlerts).toHaveLength(0);
   });
 
-  it('re-evalúa y resuelve ZONE_EXIT al ampliar el radio o desactivar/eliminar la última zona', async () => {
-    const outsideLoc = { lat: -34.605722, lon: -58.381592, fix: '3d' }; // ~222 m
+  it('re-evalúa zonas respetando el margen interior de histéresis (10%) y resuelve ZONE_EXIT al ampliar suficiente o quitar zonas', async () => {
+    const outsideLoc = { lat: -34.605722, lon: -58.381592, fix: '3d' }; // ~222.4 m
     await service.handleOvenbirdEvent({
       id: 'z-out-1',
       type: 'device.report',
@@ -464,7 +474,15 @@ describe('MonitoringService (Variante Grupo 3: link-loss-zones)', () => {
     expect(storedAlerts[0].type).toBe('ZONE_EXIT');
     expect(storedAlerts[0].status).toBe('active');
 
-    // Ampliar el radio de Casa a 300 m -> debe resolver ZONE_EXIT inmediatamente
+    // Ampliar el radio a 230 m: la mascota queda dentro de 230 m (resetea lecturas fuera),
+    // pero fuera del margen interior de histéresis (230 * 0.9 = 207 m < 222.4 m) -> sigue activa
+    zonesService.findActiveEntitiesForPet.mockResolvedValue([
+      { ...homeZone, radiusMeters: 230 },
+    ]);
+    await domainEvents.emit('pet.zones.changed', { petId: 'pet-1' });
+    expect(storedAlerts[0].status).toBe('active');
+
+    // Ampliar el radio de Casa a 300 m (300 * 0.9 = 270 m >= 222.4 m) -> resuelve ZONE_EXIT inmediatamente
     zonesService.findActiveEntitiesForPet.mockResolvedValue([
       { ...homeZone, radiusMeters: 300 },
     ]);
@@ -497,6 +515,82 @@ describe('MonitoringService (Variante Grupo 3: link-loss-zones)', () => {
     zonesService.findActiveEntitiesForPet.mockResolvedValue([]);
     await domainEvents.emit('pet.zones.changed', { petId: 'pet-1' });
     expect(storedAlerts[1].status).toBe('resolved');
+  });
+
+  it('hidrata en frío el estado desde ob.devices.status cuando la memoria está virgen y tolera fallos del SDK sin romper el 200', async () => {
+    const seenAt = new Date('2026-06-01T15:00:00.000Z');
+    const locTs = new Date('2026-06-01T14:59:50.000Z');
+
+    // 1. Si Ovenbird lanza error en frío, registra warn y devuelve 200 con estado unknown
+    ovenbirdDevicesStatus.mockRejectedValueOnce(new Error('Timeout Ovenbird'));
+    const fallbackStatus = await service.getPetMonitoringStatus(
+      'user-1',
+      'pet-1',
+    );
+    expect(fallbackStatus.linkStatus).toBe('unknown');
+    expect(fallbackStatus.lastLocation).toBeNull();
+
+    // 2. Como sigue virgen, el siguiente llamado hidrata desde Ovenbird Cloud
+    ovenbirdDevicesStatus.mockResolvedValueOnce({
+      deviceId: 'dev-1',
+      online: true,
+      lastSeenAt: seenAt,
+      dps: {
+        collar_online: { value: true, ts: seenAt },
+        location: {
+          value: { lat: -34.603722, lon: -58.381592, hdop: 1.1, fix: '3d' },
+          ts: locTs,
+        },
+      },
+    });
+
+    const hydrated = await service.getPetMonitoringStatus('user-1', 'pet-1');
+    expect(ovenbirdDevicesStatus).toHaveBeenCalledTimes(2);
+    expect(hydrated).toMatchObject({
+      petId: 'pet-1',
+      deviceId: 'dev-1',
+      linkStatus: 'online',
+      bridgeOnline: true,
+      collarOnline: true,
+      lastSeenAt: seenAt.toISOString(),
+      insideSafeArea: true,
+      lastLocation: {
+        lat: -34.603722,
+        lon: -58.381592,
+        hdop: 1.1,
+        fix: '3d',
+        ts: locTs.toISOString(),
+      },
+    });
+
+    // 3. Llamadas subsiguientes usan el estado en memoria sin volver a consultar ob.devices.status
+    await service.getPetMonitoringStatus('user-1', 'pet-1');
+    expect(ovenbirdDevicesStatus).toHaveBeenCalledTimes(2);
+
+    // 4. Descarta ubicación con fix="none" durante hidratación en frío
+    petsServiceMock.findOneEntityForUser.mockResolvedValueOnce({
+      id: 'pet-2',
+      userId: 'user-1',
+      name: 'Milo',
+      deviceId: 'dev-2',
+    });
+    ovenbirdDevicesStatus.mockResolvedValueOnce({
+      deviceId: 'dev-2',
+      online: true,
+      lastSeenAt: null,
+      dps: {
+        location: {
+          value: { lat: 0, lon: 0, fix: 'none' },
+          ts: seenAt,
+        },
+      },
+    });
+    const noFixHydrated = await service.getPetMonitoringStatus(
+      'user-1',
+      'pet-2',
+    );
+    expect(noFixHydrated.bridgeOnline).toBe(true);
+    expect(noFixHydrated.lastLocation).toBeNull();
   });
 
   it('tolera variables de entorno numéricas inválidas sin producir NaN', async () => {

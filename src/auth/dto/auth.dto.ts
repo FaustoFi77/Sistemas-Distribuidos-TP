@@ -58,9 +58,37 @@ export interface UserResponse {
   phone: string | null;
 }
 
+export class UserResponseDto implements UserResponse {
+  @ApiProperty({ example: '550e8400-e29b-41d4-a716-446655440000' })
+  id: string;
+
+  @ApiProperty({ example: 'juan@ejemplo.com' })
+  email: string;
+
+  @ApiProperty({ example: 'Juan Pérez' })
+  name: string;
+
+  @ApiProperty({ type: String, example: '+54 9 11 5555-1234', nullable: true })
+  phone: string | null;
+}
+
 export interface AuthTokenResponse {
   accessToken: string;
   tokenType: 'Bearer';
   expiresIn: number;
   user: UserResponse;
+}
+
+export class AuthTokenResponseDto implements AuthTokenResponse {
+  @ApiProperty({ example: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...' })
+  accessToken: string;
+
+  @ApiProperty({ enum: ['Bearer'], example: 'Bearer' })
+  tokenType: 'Bearer';
+
+  @ApiProperty({ example: 86400 })
+  expiresIn: number;
+
+  @ApiProperty({ type: () => UserResponseDto })
+  user: UserResponseDto;
 }

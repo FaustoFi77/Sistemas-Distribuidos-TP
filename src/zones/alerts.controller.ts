@@ -23,7 +23,10 @@ import { PaginatedResponse } from '../common/dto/pagination.dto';
 import {
   AlertQueryDto,
   AlertResponse,
+  AlertResponseDto,
+  PaginatedAlertResponseDto,
   PetMonitoringResponse,
+  PetMonitoringResponseDto,
 } from './dto/zone.dto';
 import { MonitoringService } from './monitoring.service';
 
@@ -39,7 +42,11 @@ export class AlertsController {
     summary:
       'Listar alertas de salida de zona y pérdida de enlace del usuario (paginado)',
   })
-  @ApiResponse({ status: 200, description: 'Lista paginada de alertas' })
+  @ApiResponse({
+    status: 200,
+    description: 'Lista paginada de alertas',
+    type: PaginatedAlertResponseDto,
+  })
   listAlerts(
     @CurrentUser() user: UserResponse,
     @Query() query: AlertQueryDto,
@@ -51,7 +58,11 @@ export class AlertsController {
   @HttpCode(HttpStatus.OK)
   @ApiExtension('x-variant', 'link-loss-zones')
   @ApiOperation({ summary: 'Marcar una alerta como vista/reconocida' })
-  @ApiResponse({ status: 200, description: 'Alerta reconocida' })
+  @ApiResponse({
+    status: 200,
+    description: 'Alerta reconocida',
+    type: AlertResponseDto,
+  })
   @ApiResponse({ status: 404, description: 'Alerta no encontrada' })
   acknowledgeAlert(
     @CurrentUser() user: UserResponse,
@@ -66,7 +77,11 @@ export class AlertsController {
     summary:
       'Estado en vivo de enlace, última posición, evaluación de zonas y alertas activas de la mascota',
   })
-  @ApiResponse({ status: 200, description: 'Estado actual de monitoreo' })
+  @ApiResponse({
+    status: 200,
+    description: 'Estado actual de monitoreo',
+    type: PetMonitoringResponseDto,
+  })
   @ApiResponse({ status: 404, description: 'Mascota no encontrada' })
   getPetMonitoring(
     @CurrentUser() user: UserResponse,

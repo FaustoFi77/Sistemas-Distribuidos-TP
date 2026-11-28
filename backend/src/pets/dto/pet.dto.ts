@@ -1,6 +1,12 @@
 import { ApiProperty, ApiPropertyOptional, PartialType } from '@nestjs/swagger';
 import { Transform } from 'class-transformer';
-import { IsNotEmpty, IsOptional, IsString, MaxLength } from 'class-validator';
+import {
+  IsNotEmpty,
+  IsOptional,
+  IsString,
+  IsUrl,
+  MaxLength,
+} from 'class-validator';
 import {
   PaginatedResponse,
   PaginationMetaDto,
@@ -42,9 +48,25 @@ export class CreatePetDto {
     example: 'https://ejemplo.com/luna.jpg',
     nullable: true,
   })
+  @Transform(({ value }: { value: unknown }) => {
+    if (typeof value !== 'string') return value;
+    const trimmed = value.trim();
+    return trimmed === '' ? null : trimmed;
+  })
   @IsOptional()
   @IsString()
   @MaxLength(500)
+  @IsUrl(
+    {
+      protocols: ['http', 'https'],
+      require_protocol: true,
+      require_tld: false,
+    },
+    {
+      message:
+        'photoUrl debe ser una URL válida con esquema http:// o https://',
+    },
+  )
   photoUrl?: string | null;
 }
 

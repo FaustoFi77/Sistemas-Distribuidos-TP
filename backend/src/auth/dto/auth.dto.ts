@@ -42,12 +42,14 @@ export class RegisterDto {
 
 export class LoginDto {
   @ApiProperty({ example: 'juan@ejemplo.com' })
+  @Transform(trimString)
   @IsEmail()
   email: string;
 
-  @ApiProperty({ example: 'Secreto123!' })
+  @ApiProperty({ example: 'Secreto123!', maxLength: 128 })
   @IsString()
   @IsNotEmpty()
+  @MaxLength(128)
   password: string;
 }
 
